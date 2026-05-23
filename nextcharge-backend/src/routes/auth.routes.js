@@ -17,5 +17,6 @@ router.post('/verify-otp',                     authCtrl.verifyPhoneOTP);
 router.post('/forgot-password',   authLimiter, authCtrl.forgotPassword);
 router.post('/reset-password',                 authCtrl.resetPassword);
 router.get('/me',                 protect,     authCtrl.getMe);
+router.post('/google',            authLimiter, authCtrl.googleLogin);
 
 module.exports = router;

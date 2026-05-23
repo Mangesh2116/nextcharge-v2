@@ -9,6 +9,12 @@ const userSchema = new mongoose.Schema({
     minlength: 2,
     maxlength: 60
   },
+  googleId: {
+    type: String,
+    unique: true,
+    sparse: true,
+    default: null
+  },
   email: {
     type: String,
     required: [true, 'Email is required'],
@@ -19,13 +25,13 @@ const userSchema = new mongoose.Schema({
   },
   phone: {
     type: String,
-    required: [true, 'Phone number is required'],
     unique: true,
-    match: [/^[6-9]\d{9}$/, 'Invalid Indian mobile number']
+    sparse: true,
+    match: [/^[6-9]\d{9}$/, 'Invalid Indian mobile number'],
+    default: null
   },
   password: {
     type: String,
-    required: [true, 'Password is required'],
     minlength: 8,
     select: false
   },

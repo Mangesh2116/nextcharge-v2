@@ -1,0 +1,654 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useApp } from './context';
+import { useCountUp, useScrollReveal, useTiltCard } from './hooks';
+import { STATS, STATIONS, FILTER_TABS, CONNECTOR_TYPES, HOW_STEPS } from './data';
+import { MagneticButton, btnBase } from './Navbar';
+
+const inpStyle = { width:'100%', background:'var(--glass-bg)', border:'1px solid var(--input-border)', borderRadius:12, padding:'0.75rem 1rem', color:'var(--text)', fontFamily:'inherit', fontSize:'0.9rem', outline:'none', boxSizing:'border-box', transition:'border-color 0.2s, box-shadow 0.2s' };
+const secStyle = bg => ({ padding:'5rem 5%', background: bg || 'var(--bg)' });
+const tagStyle = { color:'var(--accent)', fontSize:'0.75rem', fontWeight:700, letterSpacing:'0.12em', textTransform:'uppercase', marginBottom:'0.8rem', textShadow: 'var(--tag-glow)' };
+const h2Style = { fontSize:'clamp(1.8rem,4vw,2.8rem)', fontWeight:800, letterSpacing:'-0.03em', color:'var(--text)', marginBottom:'0.8rem', lineHeight:1.15 };
+
+function StatItem({ num, label }) {
+  const { ref, formatted } = useCountUp(num);
+  return (
+    <div ref={ref} style={{ padding:'1.5rem 2rem', textAlign:'center', flex:1, minWidth:140 }}>
+      <span style={{ fontSize:'clamp(1.6rem,3vw,2.2rem)', fontWeight:800, color:'var(--accent)', display:'block', letterSpacing:'-0.02em' }}>{formatted}</span>
+      <div style={{ fontSize:'0.8rem', color:'var(--muted)', marginTop:4, fontWeight:500 }}>{label}</div>
+    </div>
+  );
+}
+
+export function StatsBar() {
+  const r = useScrollReveal();
+  return (
+    <div ref={r.ref} className={`reveal ${r.visible?'visible':''}`} style={{ display:'flex', flexWrap:'wrap', background:'var(--bg-soft)', borderTop:'1px solid var(--section-border)', borderBottom:'1px solid var(--section-border)' }}>
+      {STATS.map((s,i) => <StatItem key={i} num={s.num} label={s.label} />)}
+    </div>
+  );
+}
+
+export function MapSection({ onSearch }) {
+  const { setSelectedStation, setBookingModal, user, setAuthModal, showToast } = useApp();
+  const [query, setQuery] = useState('');
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [activePin, setActivePin] = useState(STATIONS[0]);
+  const [focusSearch, setFocusSearch] = useState(false);
+  const [filter, setFilter] = useState('All'); // 'All', 'Available Only', 'Fast DC'
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [userLoc, setUserLoc] = useState(null); // eslint-disable-line no-unused-vars
+  const rev = useScrollReveal();
+
+  const mapRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const markersGroupRef = useRef(null);
+  const userLocMarkerRef = useRef(null);
+
+  const handleBook = () => {
+    if (!user) { setAuthModal('login'); return; }
+    setSelectedStation(activePin);
+    setBookingModal(true);
+  };
+
+  // Wait/check for Leaflet to load from CDN
+  useEffect(() => {
+    const checkL = setInterval(() => {
+      if (window.L) {
+        setMapLoaded(true);
+        clearInterval(checkL);
+      }
+    }, 100);
+    return () => clearInterval(checkL);
+  }, []);
+
+  const locateUser = (zoomIn = true) => {
+    if (!navigator.geolocation) {
+      showToast('Geolocation is not supported by your browser', 'error');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setUserLoc({ lat: latitude, lng: longitude });
+
+        if (mapInstanceRef.current) {
+          if (zoomIn) {
+            mapInstanceRef.current.setView([latitude, longitude], 14, { animate: true });
+          }
+
+          // Render user pulsing marker
+          if (userLocMarkerRef.current) {
+            userLocMarkerRef.current.setLatLng([latitude, longitude]);
+          } else {
+            const userIcon = window.L.divIcon({
+              html: `
+                <div style="position: relative; width: 24px; height: 24px;">
+                  <div style="position: absolute; inset: 0; background: #3B82F6; border: 3px solid #ffffff; border-radius: 50%; box-shadow: 0 0 10px rgba(59,130,246,0.6); z-index: 2;"></div>
+                  <div style="position: absolute; inset: -6px; background: rgba(59,130,246,0.3); border-radius: 50%; animation: pulse-blue 2s infinite; z-index: 1;"></div>
+                </div>
+                <style>
+                  @keyframes pulse-blue {
+                    0% { transform: scale(0.9); opacity: 0.8; }
+                    70% { transform: scale(1.6); opacity: 0; }
+                    100% { transform: scale(0.9); opacity: 0; }
+                  }
+                </style>
+              `,
+              className: 'user-loc-marker',
+              iconSize: [24, 24],
+              iconAnchor: [12, 12]
+            });
+            userLocMarkerRef.current = window.L.marker([latitude, longitude], { icon: userIcon }).addTo(mapInstanceRef.current);
+          }
+
+          if (zoomIn) {
+            showToast('Located! Displaying nearest chargers', 'success');
+          }
+        }
+      },
+      () => {
+        if (zoomIn) {
+          showToast('Enable location permissions to find nearby chargers', 'warning');
+        }
+      }
+    );
+  };
+
+  const createCustomMarker = (station, isActive) => {
+    const color = station.status === 'available' ? '#10B981' : station.status === 'busy' ? '#F59E0B' : '#EF4444';
+    const glow = station.status === 'available' ? 'rgba(16,185,129,0.3)' : station.status === 'busy' ? 'rgba(245,158,11,0.3)' : 'rgba(239,68,68,0.3)';
+
+    return window.L.divIcon({
+      html: `
+        <div style="
+          width: 36px;
+          height: 36px;
+          background: ${isActive ? '#ffffff' : 'var(--surface)'};
+          border: 2.5px solid ${color};
+          border-radius: 50% 50% 50% 0;
+          transform: rotate(-45deg) scale(${isActive ? 1.15 : 1});
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 4px 14px ${glow};
+          transition: all 0.2s ease;
+        ">
+          <div style="transform: rotate(45deg); font-size: 13px; margin-left: 2px; margin-bottom: 2px;">⚡</div>
+        </div>
+      `,
+      className: 'custom-leaflet-marker',
+      iconSize: [36, 36],
+      iconAnchor: [18, 36]
+    });
+  };
+
+  const renderMarkers = useCallback(() => {
+    if (!mapInstanceRef.current || !markersGroupRef.current || !window.L) return;
+
+    markersGroupRef.current.clearLayers();
+
+    const filtered = STATIONS.filter(s => {
+      if (filter === 'Available Only') return s.status === 'available';
+      if (filter === 'Fast DC') return s.maxSpeed.includes('kW') && parseFloat(s.maxSpeed) >= 30;
+      return true;
+    });
+
+    filtered.forEach(s => {
+      const active = activePin && activePin._id === s._id;
+      const markerIcon = createCustomMarker(s, active);
+      const marker = window.L.marker([s.lat, s.lng], { icon: markerIcon });
+
+      const popupContent = `
+        <div style="font-family: 'Inter', sans-serif; padding: 4px; min-width: 180px;">
+          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+            <span style="font-size: 14px;">${s.icon}</span>
+            <strong style="color: #0F172A; font-size: 0.88rem;">${s.name}</strong>
+          </div>
+          <div style="font-size: 0.72rem; color: #64748B; margin-bottom: 6px;">📍 ${s.address}</div>
+          <div style="display: flex; gap: 6px; font-size: 0.68rem; margin-bottom: 4px;">
+            <span style="background: ${s.status === 'available' ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)'}; color: ${s.status === 'available' ? '#059669' : '#D97706'}; padding: 1px 5px; border-radius: 4px; font-weight: 700;">
+              ${s.status === 'available' ? 'Available' : 'Busy'}
+            </span>
+            <span style="background: #F1F5F9; color: #334155; padding: 1px 5px; border-radius: 4px; font-weight: 600;">
+              ⚡ ${s.maxSpeed}
+            </span>
+          </div>
+        </div>
+      `;
+
+      marker.bindPopup(popupContent, { closeButton: false });
+
+      marker.on('click', () => {
+        setActivePin(s);
+        mapInstanceRef.current.setView([s.lat, s.lng], 13.5, { animate: true });
+      });
+
+      marker.addTo(markersGroupRef.current);
+    });
+  }, [filter, activePin]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Map Initialization
+  useEffect(() => {
+    if (!mapLoaded || !mapRef.current || mapInstanceRef.current) return;
+
+    const map = window.L.map(mapRef.current, {
+      center: [19.0596, 72.8656],
+      zoom: 11.5,
+      zoomControl: false
+    });
+
+    window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 20
+    }).addTo(map);
+
+    window.L.control.zoom({ position: 'topleft' }).addTo(map);
+
+    const markersGroup = window.L.layerGroup().addTo(map);
+    markersGroupRef.current = markersGroup;
+    mapInstanceRef.current = map;
+
+    renderMarkers();
+    locateUser(false);
+
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, [mapLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Update markers when filters or active pin changes
+  useEffect(() => {
+    if (mapInstanceRef.current) {
+      renderMarkers();
+    }
+  }, [filter, activePin, renderMarkers]);
+
+  const handleSearchLocation = async (queryText) => {
+    if (!queryText.trim()) return;
+    setSearchLoading(false);
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(queryText)}&countrycodes=in`);
+      const data = await res.json();
+      if (data && data.length > 0) {
+        const { lat, lon, display_name } = data[0];
+        const targetLat = parseFloat(lat);
+        const targetLng = parseFloat(lon);
+
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.setView([targetLat, targetLng], 12.5, { animate: true });
+
+          // Find nearest station
+          let nearest = null;
+          let minDist = Infinity;
+          STATIONS.forEach(s => {
+            const dist = Math.pow(s.lat - targetLat, 2) + Math.pow(s.lng - targetLng, 2);
+            if (dist < minDist) {
+              minDist = dist;
+              nearest = s;
+            }
+          });
+
+          if (nearest) {
+            setActivePin(nearest);
+            showToast(`Found: ${display_name.split(',')[0]}`, 'success');
+          }
+        }
+      } else {
+        showToast('Location not found in India', 'warning');
+      }
+    } catch {
+      showToast('Search error. Please try again.', 'error');
+    }
+  };
+
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    handleSearchLocation(query);
+    onSearch(query);
+  };
+
+  return (
+    <section id="find" ref={rev.ref} className={`reveal ${rev.visible?'visible':''}`} style={{ ...secStyle('var(--bg-soft)'), textAlign:'center' }}>
+      <div style={tagStyle}>Live Tracking</div>
+      <h2 style={h2Style}>Real-time EV Charging Map</h2>
+      <p style={{ color:'var(--muted)', maxWidth:520, margin:'0 auto 2.5rem', lineHeight:1.7, fontSize:'0.95rem' }}>
+        Locate live chargers, filter by speeds, track live port occupancy, and lock your slot instantly.
+      </p>
+
+      {/* Geocoding Search Input */}
+      <form onSubmit={handleSearchSubmit} style={{ display:'flex', maxWidth:600, margin:'0 auto 2.2rem', background:'var(--surface)', border: focusSearch ? '1.5px solid var(--accent)' : '1.5px solid var(--input-border)', borderRadius:60, padding:'0.35rem 0.35rem 0.35rem 1.3rem', alignItems:'center', gap:'0.8rem', boxShadow: focusSearch ? 'var(--shadow-glow), var(--neon-glow)' : 'var(--shadow-md)', transition:'all 0.25s' }}>
+        <span>🔍</span>
+        <input value={query} onChange={e=>setQuery(e.target.value)} onFocus={()=>setFocusSearch(true)} onBlur={()=>setFocusSearch(false)} placeholder="Search city (e.g. Mumbai, Vashi, Worli)..." style={{ flex:1, background:'none', border:'none', outline:'none', color:'var(--text)', fontFamily:'inherit', fontSize:'0.92rem' }} />
+        <button type="submit" disabled={searchLoading} style={btnBase('primary',{padding:'0.65rem 1.4rem',borderRadius:50,fontSize:'0.85rem',opacity:searchLoading?0.7:1})}>
+          {searchLoading ? 'Searching...' : 'Search'}
+        </button>
+      </form>
+
+      {/* Main Map + Dashboard container */}
+      <div style={{ maxWidth:1100, margin:'0 auto', background:'var(--surface)', border:'1px solid var(--glass-border)', borderRadius:24, overflow:'hidden', boxShadow:'var(--shadow-xl)', display:'flex', flexWrap:'wrap', minHeight:480 }}>
+        
+        {/* Left column: Leaflet Map */}
+        <div style={{ flex: '1 1 65%', minWidth: 320, height: 480, position: 'relative' }}>
+          <div ref={mapRef} style={{ width: '100%', height: '100%', background: 'var(--bg)' }} />
+          
+          {/* Floating Action Button (Locate Me) */}
+          <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 1000, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <button 
+              type="button"
+              onClick={() => locateUser(true)}
+              style={{
+                background: 'var(--surface)',
+                border: '1px solid var(--input-border)',
+                borderRadius: 12,
+                width: 42,
+                height: 42,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: 'var(--shadow-md)',
+                cursor: 'pointer',
+                fontSize: '1.25rem',
+                transition: 'all 0.2s',
+                outline: 'none'
+              }}
+              title="Locate Me"
+              onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; e.currentTarget.style.borderColor = 'var(--border-accent)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.borderColor = 'var(--input-border)'; }}
+            >
+              🎯
+            </button>
+          </div>
+
+          {/* Floating EV Filters */}
+          <div style={{ position: 'absolute', bottom: 12, left: 12, zIndex: 1000, display: 'flex', gap: 6, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(10px)', padding: '4px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)' }}>
+            {['All', 'Available Only', 'Fast DC'].map((f) => {
+              const active = filter === f;
+              return (
+                <button
+                  type="button"
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  style={{
+                    background: active ? 'var(--accent)' : 'transparent',
+                    border: 'none',
+                    borderRadius: 8,
+                    padding: '6px 12px',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    color: active ? '#ffffff' : 'rgba(255,255,255,0.7)',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    outline: 'none'
+                  }}
+                >
+                  {f}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Right column: Station Detail Dashboard */}
+        <div style={{ flex: '1 1 35%', minWidth: 300, background: 'var(--bg-alt)', borderLeft: '1px solid var(--glass-border)', padding: '1.8rem', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
+          {activePin ? (
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between', width: '100%' }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.8rem' }}>
+                  <span style={{ fontSize: '2rem' }}>{activePin.icon || '⚡'}</span>
+                  <span style={{
+                    background: activePin.status === 'available' ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)',
+                    border: activePin.status === 'available' ? '1px solid rgba(16,185,129,0.2)' : '1px solid rgba(245,158,11,0.2)',
+                    color: activePin.status === 'available' ? 'var(--accent-dark)' : '#D97706',
+                    padding: '4px 10px',
+                    borderRadius: 30,
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    textTransform: 'capitalize'
+                  }}>
+                    ● {activePin.status}
+                  </span>
+                </div>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text)', margin: '0 0 0.4rem', textAlign: 'left', lineHeight: 1.3 }}>{activePin.name}</h3>
+                <p style={{ fontSize: '0.82rem', color: 'var(--muted)', margin: '0 0 1.2rem', textAlign: 'left' }}>📍 {activePin.address}</p>
+
+                {/* Specs Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: '1.4rem' }}>
+                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px', textAlign: 'left' }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--muted)', marginBottom: 2 }}>Max Speed</div>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text)' }}>⚡ {activePin.maxSpeed}</div>
+                  </div>
+                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px', textAlign: 'left' }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--muted)', marginBottom: 2 }}>Price</div>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--accent-dark)' }}>{activePin.price}</div>
+                  </div>
+                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px', textAlign: 'left' }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--muted)', marginBottom: 2 }}>Ports Open</div>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text)' }}>🔌 {activePin.portsOpen}</div>
+                  </div>
+                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px', textAlign: 'left' }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--muted)', marginBottom: 2 }}>Distance</div>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text)' }}>🚗 {activePin.distance || '0.8 km'}</div>
+                  </div>
+                </div>
+
+                {/* Supported Connectors */}
+                <div style={{ textAlign: 'left', marginBottom: '1.5rem' }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>Connectors Supported</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {activePin.connectors.map(c => (
+                      <span key={c} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '4px 8px', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                        🔌 {c}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', gap: 8, marginTop: 'auto', width: '100%' }}>
+                <a 
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${activePin.lat},${activePin.lng}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    ...btnBase('ghost', {
+                      flex: '0 0 auto',
+                      padding: '0.75rem 1rem',
+                      borderRadius: 12,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      textDecoration: 'none'
+                    })
+                  }}
+                  title="Get Directions"
+                >
+                  🗺️
+                </a>
+                <button 
+                  type="button"
+                  onClick={handleBook}
+                  style={{ ...btnBase('primary', { flex: 1, padding: '0.75rem', borderRadius: 12, fontSize: '0.88rem' }) }}
+                >
+                  ⚡ Book Slot
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--muted)' }}>
+              <div style={{ fontSize: '3rem', marginBottom: '0.8rem' }}>🗺️</div>
+              <p style={{ fontSize: '0.88rem' }}>Select a charging station on the map to view details & book slot</p>
+            </div>
+          )}
+        </div>
+
+      </div>
+    </section>
+  );
+}
+
+function StationCard({ station, delay }) {
+  const { setSelectedStation, setBookingModal, user, setAuthModal } = useApp();
+  const tilt = useTiltCard(6);
+  const [hov, setHov] = useState(false);
+  const isAvail = station.status==='available';
+  const handleBook = () => { if(!user){setAuthModal('login');return;} setSelectedStation(station); setBookingModal(true); };
+
+  return (
+    <div ref={tilt.ref} {...tilt.handlers} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>{setHov(false);tilt.handlers.onMouseLeave();}}
+      className={`reveal visible reveal-delay-${delay%4+1}`}
+      style={{ background:'var(--surface)', border:'1px solid '+(hov?'var(--glass-border-hover)':'var(--glass-border)'), borderRadius:20, padding:'1.5rem',
+        boxShadow: hov?'var(--shadow-lg), var(--card-hover-glow)':'var(--shadow-sm)', ...tilt.style,
+        transition:'border-color 0.2s, box-shadow 0.3s, transform 0.3s cubic-bezier(0.23,1,0.32,1)' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'1rem' }}>
+        <div style={{ width:42, height:42, background:'var(--accent-light)', borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.2rem' }}>{station.icon}</div>
+        <span style={{ padding:'0.2rem 0.7rem', borderRadius:50, fontSize:'0.7rem', fontWeight:700, background:isAvail?'rgba(16,185,129,0.08)':'rgba(245,158,11,0.08)', color:isAvail?'var(--accent)':'#F59E0B' }}>{isAvail?'Available':'Busy'}</span>
+      </div>
+      <div style={{ fontSize:'1rem', fontWeight:700, marginBottom:'0.3rem', color:'var(--text)' }}>{station.name}</div>
+      <div style={{ fontSize:'0.8rem', color:'var(--muted)', marginBottom:'1rem' }}>📍 {station.address} · {station.distance}</div>
+      <div style={{ display:'flex', gap:'1rem', marginBottom:'1rem' }}>
+        {[['portsOpen','Ports'],['maxSpeed','Speed'],['price','Price']].map(([k,l])=><div key={k} style={{ fontSize:'0.78rem', color:'var(--muted)' }}><strong style={{ color:'var(--text)', display:'block', fontSize:'0.88rem' }}>{station[k]}</strong>{l}</div>)}
+      </div>
+      <div style={{ display:'flex', gap:'0.4rem', marginBottom:'1.2rem', flexWrap:'wrap' }}>
+        {station.connectors.map(c=><span key={c} style={{ padding:'0.2rem 0.55rem', border:'1px solid var(--border)', borderRadius:6, fontSize:'0.7rem', color:'var(--muted)', background:'var(--bg-soft)' }}>{c}</span>)}
+      </div>
+      <div style={{ display:'flex', gap:'0.6rem' }}>
+        <button onClick={handleBook} style={btnBase('primary',{flex:1,padding:'0.65rem',fontSize:'0.82rem'})}>Book Slot</button>
+        <button onClick={()=>station.lat&&window.open('https://www.google.com/maps/dir/?api=1&destination='+station.lat+','+station.lng,'_blank')} style={btnBase('ghost',{padding:'0.65rem 1rem',fontSize:'0.82rem'})}>Navigate</button>
+      </div>
+    </div>
+  );
+}
+
+export function StationsSection({ apiStations, loading }) {
+  const [activeTab, setActiveTab] = useState('All');
+  const rev = useScrollReveal();
+  const base = apiStations.length ? apiStations : STATIONS;
+  const filtered = activeTab==='All' ? base : base.filter(s=>({'Fast DC':s=>s.connectors.some(c=>c.includes('CCS')||c.includes('CHAde')),'AC':s=>s.connectors.some(c=>c.includes('AC')||c.includes('Type 2')),'CCS2':s=>s.connectors.some(c=>c.includes('CCS2'))}[activeTab]?.(s)));
+
+  return (
+    <section id="stations" ref={rev.ref} className={`reveal ${rev.visible?'visible':''}`} style={secStyle('var(--bg)')}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:'2rem', flexWrap:'wrap', gap:'1rem' }}>
+        <div><div style={tagStyle}>Nearby</div><h2 style={{...h2Style,marginBottom:0}}>Available Stations</h2></div>
+        <div style={{ display:'flex', gap:'0.4rem', flexWrap:'wrap' }}>
+          {FILTER_TABS.map(t=><button key={t} onClick={()=>setActiveTab(t)} style={btnBase(activeTab===t?'primary':'ghost',{fontSize:'0.8rem',padding:'0.4rem 0.9rem',fontWeight:activeTab===t?700:500})}>{t}</button>)}
+        </div>
+      </div>
+      {loading ? (
+        <div style={{ textAlign:'center', padding:'3rem', color:'var(--muted)', display:'flex', flexDirection:'column', alignItems:'center', gap:16 }}>
+          <Spin s={28} /><p>Loading stations...</p>
+        </div>
+      ) : (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:'1.2rem' }}>
+          {filtered.map((s,i)=><StationCard key={s._id} station={s} delay={i} />)}
+        </div>
+      )}
+    </section>
+  );
+}
+
+export function HowItWorks() {
+  const rev = useScrollReveal();
+  return (
+    <section id="how" ref={rev.ref} className={`reveal ${rev.visible?'visible':''}`} style={{ ...secStyle('var(--bg-soft)'), textAlign:'center' }}>
+      <div style={tagStyle}>How It Works</div>
+      <h2 style={h2Style}>Charge in 4 Simple Steps</h2>
+      <p style={{ color:'var(--muted)', maxWidth:460, margin:'0 auto 3rem', lineHeight:1.7 }}>No surprises, no waiting. Just plug in and power up.</p>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:'1.2rem', maxWidth:960, margin:'0 auto' }}>
+        {HOW_STEPS.map((s,i) => <HowCard key={s.num} step={s} delay={i} />)}
+      </div>
+    </section>
+  );
+}
+
+function HowCard({ step, delay }) {
+  const tilt = useTiltCard(5);
+  const [hov, setHov] = useState(false);
+  return (
+    <div ref={tilt.ref} {...tilt.handlers} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>{setHov(false);tilt.handlers.onMouseLeave();}}
+      className={`reveal visible reveal-delay-${delay+1}`}
+      style={{ background:'var(--surface)', border:'1px solid '+(hov?'var(--glass-border-hover)':'var(--glass-border)'), borderRadius:20, padding:'2rem 1.5rem', position:'relative', textAlign:'left',
+        boxShadow: hov?'var(--shadow-lg), var(--card-hover-glow-sm)':'var(--shadow-sm)', ...tilt.style, transition:'all 0.3s cubic-bezier(0.23,1,0.32,1)' }}>
+      <div style={{ fontSize:'2.5rem', fontWeight:800, color:'var(--accent-light)', position:'absolute', top:'1rem', right:'1.2rem', lineHeight:1, opacity:0.6 }}>{step.num}</div>
+      <div style={{ width:48, height:48, background:'var(--accent-light)', borderRadius:14, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.4rem', marginBottom:'1rem' }}>{step.icon}</div>
+      <div style={{ fontSize:'1rem', fontWeight:700, marginBottom:'0.5rem', color:'var(--text)' }}>{step.title}</div>
+      <div style={{ fontSize:'0.84rem', color:'var(--muted)', lineHeight:1.65 }}>{step.desc}</div>
+    </div>
+  );
+}
+
+export function BookingSection() {
+  const { user, setAuthModal, setBookingModal, setSelectedStation } = useApp();
+  const rev = useScrollReveal();
+  const [form, setForm] = useState({ station:STATIONS[0].name, connector:CONNECTOR_TYPES[0], vehicle:'', date:'', time:'10:00', duration:'2 hours' });
+  const set = k => e => setForm(f=>({...f,[k]:e.target.value}));
+  const handleConfirm = () => { if(!user){setAuthModal('login');return;} setSelectedStation(STATIONS.find(s=>s.name===form.station)||STATIONS[0]); setBookingModal(true); };
+
+  return (
+    <section id="booking" ref={rev.ref} className={`reveal ${rev.visible?'visible':''}`} style={secStyle('var(--bg)')}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))', gap:'3rem', alignItems:'center', maxWidth:1100, margin:'0 auto' }}>
+        <div>
+          <div style={tagStyle}>Reserve Now</div>
+          <h2 style={h2Style}>Book Your<br/>Charging Slot</h2>
+          <p style={{ color:'var(--muted)', marginBottom:'2rem', maxWidth:400, lineHeight:1.7 }}>Pick a station, choose your time, and arrive knowing a port is waiting.</p>
+          {[['✅','Free cancellation','Cancel up to 30 min before your slot.'],['🔒','Guaranteed port','Your slot is reserved and locked.'],['💳','Pay after charging','UPI, card, or wallet — billed on completion.']].map(([icon,title,desc])=>(
+            <div key={title} style={{ display:'flex', gap:'1rem', alignItems:'flex-start', marginBottom:'1rem' }}>
+              <div style={{ width:40, height:40, background:'var(--accent-light)', borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:'1.1rem' }}>{icon}</div>
+              <div><div style={{ fontWeight:600, fontSize:'0.9rem', marginBottom:2, color:'var(--text)' }}>{title}</div><div style={{ fontSize:'0.82rem', color:'var(--muted)' }}>{desc}</div></div>
+            </div>
+          ))}
+        </div>
+        <div style={{ background:'var(--surface)', border:'1px solid var(--glass-border)', borderRadius:24, padding:'2rem', boxShadow:'var(--shadow-lg)' }}>
+          <div style={{ fontSize:'1.3rem', fontWeight:800, marginBottom:'0.3rem', color:'var(--text)' }}>Reserve a Slot</div>
+          <div style={{ color:'var(--muted)', fontSize:'0.84rem', marginBottom:'1.5rem' }}>Fill in the details to secure your time</div>
+          {[['Station',<select value={form.station} onChange={set('station')} style={inpStyle}>{STATIONS.map(s=><option key={s._id}>{s.name}</option>)}</select>],
+            ['Connector',<select value={form.connector} onChange={set('connector')} style={inpStyle}>{CONNECTOR_TYPES.map(c=><option key={c}>{c}</option>)}</select>],
+            ['Vehicle',<input value={form.vehicle} onChange={set('vehicle')} placeholder="e.g. Tata Nexon EV" style={inpStyle} />],
+            ['Date & Time',<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.6rem'}}><input type="date" value={form.date} onChange={set('date')} style={inpStyle}/><input type="time" value={form.time} onChange={set('time')} style={inpStyle}/></div>],
+            ['Duration',<select value={form.duration} onChange={set('duration')} style={inpStyle}>{['30 min','1 hour','1.5 hours','2 hours','3 hours'].map(d=><option key={d}>{d}</option>)}</select>]
+          ].map(([label,field])=>(
+            <div key={label} style={{ marginBottom:'1rem' }}><label style={{ fontSize:'0.78rem', color:'var(--muted)', marginBottom:'0.35rem', display:'block', fontWeight:600 }}>{label}</label>{field}</div>
+          ))}
+          <MagneticButton variant="primary" onClick={handleConfirm} style={{ width:'100%', padding:'0.85rem', fontSize:'0.95rem', marginTop:'0.5rem' }}>⚡ Confirm Booking</MagneticButton>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const AppleSvg = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+);
+const PlaySvg = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M3.609 1.814L13.792 12 3.61 22.186a.996.996 0 0 1-.61-.92V2.734a1 1 0 0 1 .609-.92zm10.89 10.893l2.302 2.302-10.937 6.333 8.635-8.635zm3.199-3.199l2.302 2.302a1 1 0 0 1 0 1.38l-2.302 2.302L15.396 12l2.302-2.492zM5.864 2.658L16.8 8.99l-2.302 2.302L5.864 2.658z"/></svg>
+);
+
+export function AppSection() {
+  const rev = useScrollReveal();
+  const [hovApp, setHovApp] = useState(null);
+  return (
+    <section id="app" ref={rev.ref} className={`reveal ${rev.visible?'visible':''}`} style={{ ...secStyle('var(--bg-soft)'), textAlign:'center' }}>
+      <div style={tagStyle}>Download the App</div>
+      <h2 style={h2Style}>Charge on the Go</h2>
+      <p style={{ color:'var(--muted)', maxWidth:480, margin:'0.5rem auto 0', lineHeight:1.7, fontSize:'0.95rem' }}>
+        Find nearby stations, start charging with a tap, track your sessions in real-time, and get instant payment receipts — everything you need, right from your phone.
+      </p>
+      <div style={{ display:'flex', gap:'1rem', justifyContent:'center', marginTop:'2.5rem', flexWrap:'wrap' }}>
+        <a href="https://apps.apple.com" target="_blank" rel="noopener noreferrer"
+          onMouseEnter={()=>setHovApp('apple')} onMouseLeave={()=>setHovApp(null)}
+          style={{ display:'flex', alignItems:'center', gap:12, background: hovApp==='apple'?'var(--accent-light)':'var(--glass-bg)', border: hovApp==='apple'?'1px solid var(--glass-border-hover)':'1px solid var(--glass-border)', borderRadius:14, padding:'0.85rem 1.6rem', cursor:'pointer', textDecoration:'none', transition:'all 0.25s', transform: hovApp==='apple'?'translateY(-2px)':'translateY(0)', boxShadow: hovApp==='apple'?'var(--neon-glow)':'var(--shadow-sm)' }}>
+          <span style={{ color:'#fff' }}><AppleSvg /></span>
+          <div style={{ textAlign:'left' }}><small style={{ display:'block', fontSize:'0.65rem', color:'rgba(255,255,255,0.7)', lineHeight:1.3 }}>Download on the</small><strong style={{ fontSize:'0.95rem', color:'#fff', letterSpacing:'-0.01em' }}>App Store</strong></div>
+        </a>
+        <a href="https://play.google.com" target="_blank" rel="noopener noreferrer"
+          onMouseEnter={()=>setHovApp('play')} onMouseLeave={()=>setHovApp(null)}
+          style={{ display:'flex', alignItems:'center', gap:12, background: hovApp==='play'?'var(--accent-light)':'var(--glass-bg)', border: hovApp==='play'?'1px solid var(--glass-border-hover)':'1px solid var(--glass-border)', borderRadius:14, padding:'0.85rem 1.6rem', cursor:'pointer', textDecoration:'none', transition:'all 0.25s', transform: hovApp==='play'?'translateY(-2px)':'translateY(0)', boxShadow: hovApp==='play'?'var(--neon-glow)':'var(--shadow-sm)' }}>
+          <span style={{ color:'#fff' }}><PlaySvg /></span>
+          <div style={{ textAlign:'left' }}><small style={{ display:'block', fontSize:'0.65rem', color:'rgba(255,255,255,0.7)', lineHeight:1.3 }}>Get it on</small><strong style={{ fontSize:'0.95rem', color:'#fff', letterSpacing:'-0.01em' }}>Google Play</strong></div>
+        </a>
+      </div>
+    </section>
+  );
+}
+
+export function Footer() {
+  return (
+    <footer style={{ padding:'4rem 5% 2rem', background:'var(--bg-soft)', borderTop:'1px solid var(--section-border)' }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:'2.5rem', marginBottom:'3rem' }}>
+        <div>
+          <div style={{ fontSize:'1.4rem', fontWeight:800, marginBottom:'1rem' }}>Next<span style={{color:'var(--accent)', textShadow:'var(--accent-text-glow)'}}>Charge</span></div>
+          <p style={{ color:'var(--muted)', fontSize:'0.84rem', lineHeight:1.7 }}>India's most reliable EV charging network.</p>
+        </div>
+        {[['Network',['Find Stations','Add a Station','Partners','Map']],['Company',['About','Careers','Blog','Press']],['Support',['Help Center','Contact','Privacy','Terms']]].map(([title,links])=>(
+          <div key={title}><div style={{ fontWeight:700, fontSize:'0.84rem', marginBottom:'0.8rem', color:'var(--text)' }}>{title}</div><ul style={{ listStyle:'none', padding:0, margin:0, display:'flex', flexDirection:'column', gap:'0.5rem' }}>{links.map(l=><li key={l}><span style={{ color:'var(--muted)', fontSize:'0.84rem', cursor:'default', transition:'color 0.2s' }}>{l}</span></li>)}</ul></div>
+        ))}
+      </div>
+      <div style={{ borderTop:'1px solid var(--glass-border)', paddingTop:'1.5rem', display:'flex', justifyContent:'space-between', flexWrap:'wrap', gap:'1rem' }}>
+        <p style={{ fontSize:'0.78rem', color:'var(--muted-light)' }}>© 2024 NextCharge Technologies Pvt. Ltd.</p>
+        <p style={{ fontSize:'0.78rem', color:'var(--muted-light)' }}>Made in India 🇮🇳</p>
+      </div>
+    </footer>
+  );
+}
+
+export function Spin({ s=16 }) {
+  return <div style={{ width:s, height:s, border:`2px solid var(--border)`, borderTopColor:'var(--accent)', borderRadius:'50%', animation:'spin 0.7s linear infinite', flexShrink:0 }} />;
+}
+
+export function Toasts() {
+  const { toasts } = useApp();
+  const colors = { success:'var(--accent)', error:'#EF4444', info:'#3B82F6', warning:'#F59E0B' };
+  const icons = { success:'✓', error:'✕', info:'ℹ', warning:'⚠' };
+  return (
+    <div style={{ position:'fixed', bottom:'1.5rem', right:'1.5rem', zIndex:99999, display:'flex', flexDirection:'column', gap:10, maxWidth:360 }}>
+      {toasts.map(t=>(
+        <div key={t.id} style={{ background:'var(--surface)', borderLeft:'3px solid '+(colors[t.type]||'var(--accent)'), border:'1px solid var(--input-border)', color:'var(--text)', padding:'12px 16px', borderRadius:12, fontFamily:'inherit', fontSize:'0.85rem', display:'flex', alignItems:'center', gap:10, animation:'slideUp 0.25s ease', boxShadow:'var(--shadow-lg)' }}>
+          <span style={{ color:colors[t.type]||'var(--accent)', fontWeight:700, flexShrink:0 }}>{icons[t.type]||'✓'}</span>
+          <span>{t.message}</span>
+        </div>
+      ))}
+    </div>
+  );
+}

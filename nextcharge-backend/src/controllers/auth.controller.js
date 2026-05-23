@@ -164,3 +164,55 @@ exports.getMe = asyncHandler(async (req, res) => {
   const user = await User.findById(req.user._id).populate('preferences.favoriteStations', 'name address.city');
   sendSuccess(res, { user: user.toPublic() }, 'Profile fetched');
 });
+
+// ─── Google OAuth Login/Signup ────────────────────────────────────────────────
+const { OAuth2Client } = require('google-auth-library');
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+exports.googleLogin = asyncHandler(async (req, res) => {
+  const { credential } = req.body;
+  if (!credential) throw new AppError('Google credential is required.', 400);
+
+  // Verify the Google ID token
+  const ticket = await googleClient.verifyIdToken({
+    idToken: credential,
+    audience: process.env.GOOGLE_CLIENT_ID,
+  });
+  const payload = ticket.getPayload();
+  const { sub: googleId, email, name, picture } = payload;
+
+  if (!email) throw new AppError('Google account must have an email.', 400);
+
+  // Check if user already exists (by googleId or email)
+  let user = await User.findOne({ $or: [{ googleId }, { email }] });
+
+  if (user) {
+    // Existing user — link googleId if not already linked
+    if (!user.googleId) {
+      user.googleId = googleId;
+      if (picture && !user.avatar) user.avatar = picture;
+      await user.save();
+    }
+    await User.findByIdAndUpdate(user._id, { lastLogin: new Date() });
+  } else {
+    // New user — create account
+    user = await User.create({
+      name,
+      email,
+      googleId,
+      avatar: picture || null,
+      isEmailVerified: true,
+    });
+  }
+
+  const { accessToken, refreshToken } = await generateTokens(user._id);
+  await User.findByIdAndUpdate(user._id, {
+    $push: { refreshTokens: refreshToken }
+  });
+
+  sendSuccess(res, {
+    token: accessToken,
+    refreshToken,
+    user: user.toPublic()
+  }, user ? 'Login successful' : 'Account created via Google');
+});
