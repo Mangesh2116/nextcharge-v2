@@ -37,7 +37,7 @@ export default function Navbar() {
   return (
     <>
       <nav style={navStyle}>
-        <div style={{ fontSize: '1.4rem', fontWeight: 800, letterSpacing: '-0.03em', cursor: 'default' }}>
+        <div onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} style={{ fontSize: '1.4rem', fontWeight: 800, letterSpacing: '-0.03em', cursor: 'pointer' }}>
           Next<span style={{ color: 'var(--accent)' }}>Charge</span>
           {backendOnline !== null && <span title={backendOnline ? 'Backend connected' : 'Demo mode'} style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: backendOnline ? 'var(--accent)' : '#F59E0B', marginLeft: 8, verticalAlign: 'middle' }} />}
         </div>

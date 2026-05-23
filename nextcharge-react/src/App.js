@@ -33,7 +33,7 @@ function AppContent() {
       <Navbar />
       <Hero />
       <StatsBar />
-      <MapSection onSearch={handleSearch} />
+      <MapSection onSearch={handleSearch} apiStations={apiStations} />
       <StationsSection apiStations={apiStations} loading={loading} />
       <HowItWorks />
       <BookingSection />

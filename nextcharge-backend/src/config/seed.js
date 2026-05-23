@@ -123,7 +123,7 @@ const seed = async () => {
     }
   ];
 
-  await Station.insertMany(stations);
+  await Station.create(stations);
 
   logger.info('✅ Seed complete!');
   logger.info(`   Admin:    admin@nextcharge.in    / Admin@1234`);

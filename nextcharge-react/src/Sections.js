@@ -28,11 +28,18 @@ export function StatsBar() {
   );
 }
 
-export function MapSection({ onSearch }) {
+export function MapSection({ onSearch, apiStations = [] }) {
   const { setSelectedStation, setBookingModal, user, setAuthModal, showToast } = useApp();
   const [query, setQuery] = useState('');
   const [searchLoading, setSearchLoading] = useState(false);
-  const [activePin, setActivePin] = useState(STATIONS[0]);
+  const baseStations = apiStations.length ? apiStations : STATIONS;
+  const [activePin, setActivePin] = useState(baseStations[0] || STATIONS[0]);
+
+  useEffect(() => {
+    if (apiStations.length > 0) {
+      setActivePin(apiStations[0]);
+    }
+  }, [apiStations]);
   const [focusSearch, setFocusSearch] = useState(false);
   const [filter, setFilter] = useState('All'); // 'All', 'Available Only', 'Fast DC'
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -147,7 +154,7 @@ export function MapSection({ onSearch }) {
 
     markersGroupRef.current.clearLayers();
 
-    const filtered = STATIONS.filter(s => {
+    const filtered = baseStations.filter(s => {
       if (filter === 'Available Only') return s.status === 'available';
       if (filter === 'Fast DC') return s.maxSpeed.includes('kW') && parseFloat(s.maxSpeed) >= 30;
       return true;
@@ -185,7 +192,7 @@ export function MapSection({ onSearch }) {
 
       marker.addTo(markersGroupRef.current);
     });
-  }, [filter, activePin]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [filter, activePin, baseStations]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Map Initialization
   useEffect(() => {
@@ -242,7 +249,7 @@ export function MapSection({ onSearch }) {
           // Find nearest station
           let nearest = null;
           let minDist = Infinity;
-          STATIONS.forEach(s => {
+          baseStations.forEach(s => {
             const dist = Math.pow(s.lat - targetLat, 2) + Math.pow(s.lng - targetLng, 2);
             if (dist < minDist) {
               minDist = dist;
@@ -599,14 +606,14 @@ export function AppSection() {
         <a href="https://apps.apple.com" target="_blank" rel="noopener noreferrer"
           onMouseEnter={()=>setHovApp('apple')} onMouseLeave={()=>setHovApp(null)}
           style={{ display:'flex', alignItems:'center', gap:12, background: hovApp==='apple'?'var(--accent-light)':'var(--glass-bg)', border: hovApp==='apple'?'1px solid var(--glass-border-hover)':'1px solid var(--glass-border)', borderRadius:14, padding:'0.85rem 1.6rem', cursor:'pointer', textDecoration:'none', transition:'all 0.25s', transform: hovApp==='apple'?'translateY(-2px)':'translateY(0)', boxShadow: hovApp==='apple'?'var(--neon-glow)':'var(--shadow-sm)' }}>
-          <span style={{ color:'#fff' }}><AppleSvg /></span>
-          <div style={{ textAlign:'left' }}><small style={{ display:'block', fontSize:'0.65rem', color:'rgba(255,255,255,0.7)', lineHeight:1.3 }}>Download on the</small><strong style={{ fontSize:'0.95rem', color:'#fff', letterSpacing:'-0.01em' }}>App Store</strong></div>
+          <span style={{ color:'var(--text)', display:'flex', alignItems:'center' }}><AppleSvg /></span>
+          <div style={{ textAlign:'left' }}><small style={{ display:'block', fontSize:'0.65rem', color:'var(--muted)', lineHeight:1.3 }}>Download on the</small><strong style={{ fontSize:'0.95rem', color:'var(--text)', letterSpacing:'-0.01em' }}>App Store</strong></div>
         </a>
         <a href="https://play.google.com" target="_blank" rel="noopener noreferrer"
           onMouseEnter={()=>setHovApp('play')} onMouseLeave={()=>setHovApp(null)}
           style={{ display:'flex', alignItems:'center', gap:12, background: hovApp==='play'?'var(--accent-light)':'var(--glass-bg)', border: hovApp==='play'?'1px solid var(--glass-border-hover)':'1px solid var(--glass-border)', borderRadius:14, padding:'0.85rem 1.6rem', cursor:'pointer', textDecoration:'none', transition:'all 0.25s', transform: hovApp==='play'?'translateY(-2px)':'translateY(0)', boxShadow: hovApp==='play'?'var(--neon-glow)':'var(--shadow-sm)' }}>
-          <span style={{ color:'#fff' }}><PlaySvg /></span>
-          <div style={{ textAlign:'left' }}><small style={{ display:'block', fontSize:'0.65rem', color:'rgba(255,255,255,0.7)', lineHeight:1.3 }}>Get it on</small><strong style={{ fontSize:'0.95rem', color:'#fff', letterSpacing:'-0.01em' }}>Google Play</strong></div>
+          <span style={{ color:'var(--text)', display:'flex', alignItems:'center' }}><PlaySvg /></span>
+          <div style={{ textAlign:'left' }}><small style={{ display:'block', fontSize:'0.65rem', color:'var(--muted)', lineHeight:1.3 }}>Get it on</small><strong style={{ fontSize:'0.95rem', color:'var(--text)', letterSpacing:'-0.01em' }}>Google Play</strong></div>
         </a>
       </div>
     </section>
@@ -618,7 +625,7 @@ export function Footer() {
     <footer style={{ padding:'4rem 5% 2rem', background:'var(--bg-soft)', borderTop:'1px solid var(--section-border)' }}>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:'2.5rem', marginBottom:'3rem' }}>
         <div>
-          <div style={{ fontSize:'1.4rem', fontWeight:800, marginBottom:'1rem' }}>Next<span style={{color:'var(--accent)', textShadow:'var(--accent-text-glow)'}}>Charge</span></div>
+          <div onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} style={{ fontSize:'1.4rem', fontWeight:800, marginBottom:'1rem', cursor:'pointer' }}>Next<span style={{color:'var(--accent)', textShadow:'var(--accent-text-glow)'}}>Charge</span></div>
           <p style={{ color:'var(--muted)', fontSize:'0.84rem', lineHeight:1.7 }}>India's most reliable EV charging network.</p>
         </div>
         {[['Network',['Find Stations','Add a Station','Partners','Map']],['Company',['About','Careers','Blog','Press']],['Support',['Help Center','Contact','Privacy','Terms']]].map(([title,links])=>(
