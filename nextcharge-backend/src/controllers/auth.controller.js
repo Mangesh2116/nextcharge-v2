@@ -13,10 +13,34 @@ const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString()
 exports.register = asyncHandler(async (req, res) => {
   const { name, email, phone, password } = req.body;
 
-  const existing = await User.findOne({ $or: [{ email }, { phone }] });
+  const existing = await User.findOne({ $or: [{ email }, { phone }] }).select('+password');
   if (existing) {
-    const field = existing.email === email ? 'Email' : 'Phone number';
-    throw new AppError(`${field} is already registered.`, 409);
+    if (existing.phone === phone) {
+      if (!existing.password) {
+        throw new AppError('Phone number is already registered. Please sign in using your existing account.', 409);
+      }
+      if (password && await existing.comparePassword(password)) {
+        if (!existing.isActive) throw new AppError('Account deactivated. Contact support.', 403);
+        await User.findByIdAndUpdate(existing._id, { lastLogin: new Date() });
+
+        const { accessToken, refreshToken } = await generateTokens(existing._id);
+        await User.findByIdAndUpdate(existing._id, {
+          $push: { refreshTokens: refreshToken }
+        });
+
+        return sendSuccess(res, {
+          token: accessToken,
+          refreshToken,
+          user: existing.toPublic()
+        }, 'Login successful');
+      }
+
+      throw new AppError('Phone number is already registered. Please use your password to sign in.', 409);
+    }
+
+    if (existing.email === email) {
+      throw new AppError('Email is already registered.', 409);
+    }
   }
 
   const user = await User.create({ name, email, phone, password });
