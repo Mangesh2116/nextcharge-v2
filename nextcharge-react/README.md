@@ -16,7 +16,7 @@ npm start
 
 ## Backend Connection
 
-The app auto-connects to the NextCharge backend at `http://localhost:5000`.
+The app auto-connects to the NextCharge backend at `http://localhost:5001` by default (or the URL set in `.env`).
 
 If the backend isn't running, the app works in **demo mode** using local mock data — all UI works, login/signup show errors from the API.
 

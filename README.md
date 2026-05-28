@@ -85,7 +85,7 @@ Ensure you have [Node.js](https://nodejs.org/) (v16+ recommended) and `npm` inst
    ```bash
    npm start
    ```
-   *The backend server will run on `http://localhost:5000` (or as specified in your `.env`).*
+   *The backend server will run on `http://localhost:5001` by default, or on the port configured in your `.env` file.*
 
 ### 3. Set Up the Frontend
 1. Open a new terminal tab and navigate to the frontend directory:

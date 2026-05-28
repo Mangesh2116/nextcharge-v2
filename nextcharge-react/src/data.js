@@ -24,7 +24,9 @@ export const HOW_STEPS = [
 export const CONNECTOR_TYPES = ['CCS2 (DC Fast — 150kW)', 'CHAdeMO (DC Fast)', 'Type 2 AC (7.2kW)', 'Bharat DC-001'];
 export const FILTER_TABS = ['All', 'Fast DC', 'AC', 'CCS2'];
 
-export const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5001/api/v1';
+// Use explicit frontend override when available, otherwise use same-host relative API path.
+const normalizeApiUrl = (url) => url?.replace(/\/+$|\/$/, '').replace(/([^:]\/)(\/)+/g, '$1');
+export const API_BASE = process.env.REACT_APP_API_URL ? normalizeApiUrl(process.env.REACT_APP_API_URL) : '/api/v1';
 
 export async function apiCall(endpoint, opts = {}, token = null) {
   const controller = new AbortController();
