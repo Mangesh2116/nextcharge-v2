@@ -13,43 +13,13 @@ const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString()
 exports.register = asyncHandler(async (req, res) => {
   const { name, email, phone, password } = req.body;
 
-  const cleanEmail = email?.trim().toLowerCase();
-  const cleanPhone = phone?.trim();
-
-  if (!cleanEmail) throw new AppError('Email is required.', 400);
-  if (!cleanPhone) throw new AppError('Phone number is required.', 400);
-  if (!password) throw new AppError('Password is required.', 400);
-
-  const existingEmail = await User.findOne({ email: cleanEmail });
-  if (existingEmail) {
-    throw new AppError('Email is already registered.', 409);
+  const existing = await User.findOne({ $or: [{ email }, { phone }] });
+  if (existing) {
+    const field = existing.email === email ? 'Email' : 'Phone number';
+    throw new AppError(`${field} is already registered.`, 409);
   }
 
-  const existingPhone = await User.findOne({ phone: cleanPhone });
-  if (existingPhone) {
-    throw new AppError('Phone number is already registered.', 409);
-  }
-
-  const user = await User.create({
-    name: name?.trim(),
-    email: cleanEmail,
-    phone: cleanPhone,
-    password
-  });
-
-  const otp = generateOTP();
-  const ttl = parseInt(process.env.OTP_EXPIRES_IN || 10) * 60;
-  await setCache(`otp:phone:${cleanPhone}`, { otp, userId: user._id }, ttl);
-  await sendOTPSMS(cleanPhone, otp);
-
-  const { accessToken, refreshToken } = await generateTokens(user._id);
-
-  sendSuccess(res, {
-    token: accessToken,
-    refreshToken,
-    user: user.toPublic()
-  }, 'Registration successful. Please verify your phone number.', 201);
-});
+  const user = await User.create({ name, email, phone, password });
 
   // Send verification OTP to phone
   const otp = generateOTP();
@@ -203,22 +173,21 @@ exports.googleLogin = asyncHandler(async (req, res) => {
   const { credential } = req.body;
   if (!credential) throw new AppError('Google credential is required.', 400);
 
+  // Verify the Google ID token
   const ticket = await googleClient.verifyIdToken({
     idToken: credential,
     audience: process.env.GOOGLE_CLIENT_ID,
   });
-
   const payload = ticket.getPayload();
   const { sub: googleId, email, name, picture } = payload;
 
   if (!email) throw new AppError('Google account must have an email.', 400);
 
-  const normalizedEmail = email.toLowerCase();
-  let user = await User.findOne({ $or: [{ googleId }, { email: normalizedEmail }] });
-
-  const isNewUser = !user;
+  // Check if user already exists (by googleId or email)
+  let user = await User.findOne({ $or: [{ googleId }, { email }] });
 
   if (user) {
+    // Existing user — link googleId if not already linked
     if (!user.googleId) {
       user.googleId = googleId;
       if (picture && !user.avatar) user.avatar = picture;
@@ -226,9 +195,10 @@ exports.googleLogin = asyncHandler(async (req, res) => {
     }
     await User.findByIdAndUpdate(user._id, { lastLogin: new Date() });
   } else {
+    // New user — create account
     user = await User.create({
       name,
-      email: normalizedEmail,
+      email,
       googleId,
       avatar: picture || null,
       isEmailVerified: true,
@@ -244,5 +214,5 @@ exports.googleLogin = asyncHandler(async (req, res) => {
     token: accessToken,
     refreshToken,
     user: user.toPublic()
-  }, isNewUser ? 'Account created via Google' : 'Login successful');
+  }, user ? 'Login successful' : 'Account created via Google');
 });
