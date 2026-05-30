@@ -26,8 +26,7 @@ const userSchema = new mongoose.Schema({
     type: String,
     unique: true,
     sparse: true,
-    match: [/^[6-9]\d{9}$/, 'Invalid Indian mobile number'],
-    default: null
+    match: [/^[6-9]\d{9}$/, 'Invalid Indian mobile number']
   },
   password: {
     type: String,
@@ -87,6 +86,9 @@ const userSchema = new mongoose.Schema({
 
 // Hash password before save
 userSchema.pre('save', async function (next) {
+  if (this.phone === null || this.phone === '') {
+    this.phone = undefined;
+  }
   if (!this.isModified('password')) return next();
   this.password = await bcrypt.hash(this.password, 12);
   next();
