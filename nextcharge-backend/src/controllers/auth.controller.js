@@ -220,12 +220,14 @@ exports.googleLogin = asyncHandler(async (req, res) => {
 
   if (user) {
     // Existing user — link googleId if not already linked
+    const updateFields = { lastLogin: new Date() };
     if (!user.googleId) {
-      user.googleId = googleId;
-      if (picture && !user.avatar) user.avatar = picture;
-      await user.save();
+      updateFields.googleId = googleId;
+      if (picture && !user.avatar) updateFields.avatar = picture;
     }
-    await User.findByIdAndUpdate(user._id, { lastLogin: new Date() });
+    // Use findByIdAndUpdate to avoid triggering full document validation
+    // (user.save() was causing "phone already exists" unique constraint errors)
+    user = await User.findByIdAndUpdate(user._id, updateFields, { new: true });
   } else {
     // New user — create account
     user = await User.create({
