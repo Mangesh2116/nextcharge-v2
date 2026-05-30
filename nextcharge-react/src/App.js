@@ -8,6 +8,8 @@ import { AuthModal, BookingModal } from './Modals';
 import ArticleEditorModal from './ArticleEditor';
 import NewsPage from './NewsPage';
 
+import ErrorBoundary from './ErrorBoundary';
+
 function HomePage() {
   const { searchStations, showToast } = useApp();
   const [apiStations, setApiStations] = useState([]);
@@ -33,15 +35,15 @@ function HomePage() {
 
   return (
     <>
-      <Hero />
-      <StatsBar />
-      <MapSection onSearch={handleSearch} apiStations={apiStations} />
-      <StationsSection apiStations={apiStations} loading={loading} />
-      <HowItWorks />
-      <BookingSection />
-      <NewsSection />
-      <AppSection />
-      <Footer />
+      <ErrorBoundary name="Hero"><Hero /></ErrorBoundary>
+      <ErrorBoundary name="Stats Bar"><StatsBar /></ErrorBoundary>
+      <ErrorBoundary name="Map Section"><MapSection onSearch={handleSearch} apiStations={apiStations} /></ErrorBoundary>
+      <ErrorBoundary name="Stations Section"><StationsSection apiStations={apiStations} loading={loading} /></ErrorBoundary>
+      <ErrorBoundary name="How It Works"><HowItWorks /></ErrorBoundary>
+      <ErrorBoundary name="Booking Section"><BookingSection /></ErrorBoundary>
+      <ErrorBoundary name="News Section"><NewsSection /></ErrorBoundary>
+      <ErrorBoundary name="App Section"><AppSection /></ErrorBoundary>
+      <ErrorBoundary name="Footer"><Footer /></ErrorBoundary>
     </>
   );
 }
