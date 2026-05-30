@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
-import { apiCall } from './data';
+import { apiCall, API_BASE } from './data';
 
 const Ctx = createContext(null);
 export const useApp = () => useContext(Ctx);
@@ -13,6 +13,7 @@ export function AppProvider({ children }) {
   const [selectedStation, setSelectedStation] = useState(null);
   const [backendOnline, setBackendOnline] = useState(null);
   const [theme, setTheme] = useState(() => localStorage.getItem('nc_theme') || 'dark');
+  const [articleEditorModal, setArticleEditorModal] = useState(false);
 
   useEffect(() => { document.documentElement.setAttribute('data-theme', theme); }, [theme]);
   useEffect(() => { apiCall('/stations?limit=1').then(r => setBackendOnline(r.ok)); }, []);
@@ -114,8 +115,59 @@ export function AppProvider({ children }) {
     });
   }, []);
 
+  // ─── Article Functions ─────────────────────────────────────────────────────
+  const fetchArticles = useCallback(async (page = 1, tag = '') => {
+    const ep = `/articles?page=${page}&limit=12` + (tag ? `&tag=${encodeURIComponent(tag)}` : '');
+    const r = await apiCall(ep);
+    if (!r.ok) return { articles: [], pagination: null };
+    return { articles: r.data.data || [], pagination: r.data.pagination || null };
+  }, []);
+
+  const fetchArticle = useCallback(async (slug) => {
+    const r = await apiCall(`/articles/${slug}`);
+    if (!r.ok) return null;
+    return r.data.article || null;
+  }, []);
+
+  const fetchAdminArticles = useCallback(async (page = 1) => {
+    const r = await apiCall(`/articles/admin/all?page=${page}&limit=50`, {}, token);
+    if (!r.ok) return [];
+    return r.data.data || [];
+  }, [token]);
+
+  const createArticle = useCallback(async (formData) => {
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(API_BASE + '/articles', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token },
+      body: formData
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.message || 'Failed to create article');
+    return json.article || json;
+  }, [token]);
+
+  const updateArticle = useCallback(async (id, formData) => {
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(API_BASE + '/articles/' + id, {
+      method: 'PUT',
+      headers: { 'Authorization': 'Bearer ' + token },
+      body: formData
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.message || 'Failed to update article');
+    return json.article || json;
+  }, [token]);
+
+  const deleteArticle = useCallback(async (id) => {
+    if (!token) throw new Error('Not authenticated');
+    const r = await apiCall('/articles/' + id, { method: 'DELETE' }, token);
+    if (!r.ok) throw new Error(r.error || 'Failed to delete article');
+    return true;
+  }, [token]);
+
   return (
-    <Ctx.Provider value={{ user, token, toasts, showToast, authModal, setAuthModal, bookingModal, setBookingModal, selectedStation, setSelectedStation, backendOnline, login, signup, logout, googleLogin, createBooking, searchStations, theme, toggleTheme }}>
+    <Ctx.Provider value={{ user, token, toasts, showToast, authModal, setAuthModal, bookingModal, setBookingModal, selectedStation, setSelectedStation, backendOnline, login, signup, logout, googleLogin, createBooking, searchStations, theme, toggleTheme, articleEditorModal, setArticleEditorModal, fetchArticles, fetchArticle, fetchAdminArticles, createArticle, updateArticle, deleteArticle }}>
       {children}
     </Ctx.Provider>
   );

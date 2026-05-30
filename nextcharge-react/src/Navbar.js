@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useApp } from './context';
 import { useMagnetic, useIsTouchDevice } from './hooks';
 
 export default function Navbar() {
   const { user, setAuthModal, logout, backendOnline, theme, toggleTheme } = useApp();
+  const navigate = useNavigate();
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const isTouch = useIsTouchDevice();
@@ -20,8 +22,16 @@ export default function Navbar() {
     return () => { document.body.style.overflow = ''; };
   }, [menuOpen]);
 
-  const scrollTo = id => { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }); setMenuOpen(false); };
-  const navLinks = [['find', 'Find Stations'], ['booking', 'Book Slot'], ['how', 'How it works'], ['app', 'App']];
+  const scrollTo = id => { 
+    if (window.location.pathname !== '/') {
+      navigate('/');
+      setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }), 100);
+    } else {
+      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+    }
+    setMenuOpen(false); 
+  };
+  const navLinks = [['find', 'Find Stations'], ['booking', 'Book Slot'], ['how', 'How it works'], ['news', 'News'], ['app', 'App']];
 
   const navStyle = {
     position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
@@ -44,7 +54,7 @@ export default function Navbar() {
 
         <ul className="desktop-nav" style={{ display: 'flex', gap: '2rem', listStyle: 'none', margin: 0, padding: 0 }}>
           {navLinks.map(([id, label]) => (
-            <NavLink key={id} onClick={() => scrollTo(id)} label={label} isTouch={isTouch} />
+            <NavLink key={id} onClick={() => id === 'news' ? navigate('/news') : scrollTo(id)} label={label} isTouch={isTouch} />
           ))}
         </ul>
 
@@ -73,7 +83,7 @@ export default function Navbar() {
         <div className="mobile-nav-drawer">
           <button onClick={() => setMenuOpen(false)} style={{ position: 'absolute', top: '1.2rem', right: '1.2rem', background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: 'var(--muted)', lineHeight: 1, width: 36, height: 36 }}>✕</button>
           {navLinks.map(([id, label]) => (
-            <button key={id} onClick={() => scrollTo(id)} style={{ background: 'none', border: 'none', textAlign: 'left', padding: '0.9rem 0.5rem', fontSize: '1.05rem', fontWeight: 500, cursor: 'pointer', color: 'var(--text)', borderBottom: '1px solid var(--border)', fontFamily: 'inherit' }}>{label}</button>
+            <button key={id} onClick={() => id === 'news' ? (() => { navigate('/news'); setMenuOpen(false); })() : scrollTo(id)} style={{ background: 'none', border: 'none', textAlign: 'left', padding: '0.9rem 0.5rem', fontSize: '1.05rem', fontWeight: 500, cursor: 'pointer', color: 'var(--text)', borderBottom: '1px solid var(--border)', fontFamily: 'inherit' }}>{label}</button>
           ))}
           <div style={{ padding: '0.5rem 0' }}>
             <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
@@ -108,13 +118,16 @@ function NavLink({ onClick, label, isTouch }) {
 }
 
 function UserBadge({ user, logout }) {
-  const { setAuthModal } = useApp();
+  const { setAuthModal, setArticleEditorModal } = useApp();
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--accent-light)', border: '1px solid var(--border-accent)', borderRadius: 50, padding: '0.4rem 1rem' }}>
       <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--accent-mid)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent)' }}>{user.name?.[0] || 'U'}</div>
       <span style={{ color: 'var(--accent-dark)', fontWeight: 600, fontSize: '0.85rem' }}>{user.name?.split(' ')[0]}</span>
       {user.role === 'admin' && (
-        <button type="button" onClick={() => setAuthModal('admin_dashboard')} style={{ background: 'var(--accent)', border: 'none', color: '#fff', borderRadius: 20, padding: '3px 9px', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', marginRight: 4, transition: 'transform 0.2s' }} onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.05)'; }} onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}>Admin</button>
+        <>
+          <button type="button" onClick={() => setArticleEditorModal(true)} style={{ background: 'rgba(59,130,246,0.1)', border: 'none', color: '#3B82F6', borderRadius: 20, padding: '3px 9px', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', marginRight: 2, transition: 'transform 0.2s' }} onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.05)'; }} onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}>Articles</button>
+          <button type="button" onClick={() => setAuthModal('admin_dashboard')} style={{ background: 'var(--accent)', border: 'none', color: '#fff', borderRadius: 20, padding: '3px 9px', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', marginRight: 4, transition: 'transform 0.2s' }} onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.05)'; }} onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}>Admin</button>
+        </>
       )}
       <button onClick={logout} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '0.78rem', fontFamily: 'inherit' }}>Sign out</button>
     </div>

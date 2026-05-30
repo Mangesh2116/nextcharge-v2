@@ -585,6 +585,255 @@ export function BookingSection() {
   );
 }
 
+// ─── Mock articles for when backend is offline ───────────────────────────────
+const MOCK_ARTICLES = [
+  { _id:'a1', title:'India Targets 10 Million EV Chargers by 2030', slug:'india-ev-chargers-2030', excerpt:'The government announces ambitious plans to expand the EV charging infrastructure across all major highways and urban centers.', coverImage:{url:null}, tags:['EV News','Policy'], readTime:4, publishedAt:'2026-05-28T10:00:00Z', views:1240, author:{name:'NextCharge Team'} },
+  { _id:'a2', title:'CCS2 vs CHAdeMO: Which Fast Charger Wins?', slug:'ccs2-vs-chademo', excerpt:'A comprehensive comparison of the two dominant DC fast charging standards and what it means for Indian EV owners.', coverImage:{url:null}, tags:['Charging Tips'], readTime:6, publishedAt:'2026-05-25T08:00:00Z', views:890, author:{name:'Priya Patel'} },
+  { _id:'a3', title:'How to Maximize Your EV Battery Life', slug:'maximize-ev-battery-life', excerpt:'Expert tips on charging habits, temperature management, and driving patterns that extend your battery lifespan by years.', coverImage:{url:null}, tags:['Tips & Guides'], readTime:5, publishedAt:'2026-05-22T14:00:00Z', views:2100, author:{name:'Rahul Mehta'} },
+  { _id:'a4', title:'Top 5 Road Trip Routes with EV Charging', slug:'top-5-ev-road-trips', excerpt:'Plan your next electric road trip with our curated routes that have reliable charging infrastructure every 100km.', coverImage:{url:null}, tags:['Travel'], readTime:7, publishedAt:'2026-05-20T10:00:00Z', views:1560, author:{name:'NextCharge Team'} },
+  { _id:'a5', title:'The Rise of Ultra-Fast 350kW Chargers in India', slug:'ultra-fast-chargers-india', excerpt:'New ultra-fast chargers promise to add 200km range in just 10 minutes. Here\'s where to find them.', coverImage:{url:null}, tags:['EV News','Technology'], readTime:4, publishedAt:'2026-05-18T09:00:00Z', views:3200, author:{name:'Amit Shah'} },
+  { _id:'a6', title:'EV Charging Costs: A Complete Breakdown', slug:'ev-charging-costs-breakdown', excerpt:'Understanding per-kWh pricing, time-based billing, and how to save money on every charge session.', coverImage:{url:null}, tags:['Tips & Guides'], readTime:5, publishedAt:'2026-05-15T12:00:00Z', views:1800, author:{name:'NextCharge Team'} },
+];
+
+const TAG_COLORS = {
+  'EV News': { bg: 'rgba(59,130,246,0.1)', color: '#3B82F6' },
+  'Policy': { bg: 'rgba(139,92,246,0.1)', color: '#8B5CF6' },
+  'Charging Tips': { bg: 'rgba(16,185,129,0.1)', color: '#10B981' },
+  'Tips & Guides': { bg: 'rgba(245,158,11,0.1)', color: '#F59E0B' },
+  'Travel': { bg: 'rgba(236,72,153,0.1)', color: '#EC4899' },
+  'Technology': { bg: 'rgba(6,182,212,0.1)', color: '#06B6D4' },
+  'Industry': { bg: 'rgba(99,102,241,0.1)', color: '#6366F1' },
+};
+
+function getTagStyle(tag) {
+  return TAG_COLORS[tag] || { bg: 'var(--accent-light)', color: 'var(--accent)' };
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function NewsCard({ article, onClick }) {
+  const [hov, setHov] = useState(false);
+  const tag = article.tags?.[0] || 'News';
+  const ts = getTagStyle(tag);
+
+  return (
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        background: 'var(--surface)',
+        border: '1px solid ' + (hov ? 'var(--glass-border-hover)' : 'var(--glass-border)'),
+        borderRadius: 20,
+        overflow: 'hidden',
+        cursor: 'pointer',
+        boxShadow: hov ? 'var(--shadow-lg), var(--card-hover-glow)' : 'var(--shadow-sm)',
+        transform: hov ? 'translateY(-4px)' : 'translateY(0)',
+        transition: 'all 0.3s cubic-bezier(0.23,1,0.32,1)',
+        minWidth: 0,
+        flexShrink: 0,
+        width: '100%',
+      }}
+    >
+      {/* Cover Image */}
+      <div style={{ width: '100%', height: 180, background: 'var(--bg-alt)', position: 'relative', overflow: 'hidden' }}>
+        {article.coverImage?.url ? (
+          <img src={article.coverImage.url} alt={article.title} style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.4s', transform: hov ? 'scale(1.05)' : 'scale(1)' }} />
+        ) : (
+          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: `linear-gradient(135deg, var(--bg-alt) 0%, var(--bg-soft) 100%)`, fontSize: '2.5rem' }}>
+            📰
+          </div>
+        )}
+        {/* Tag Badge */}
+        <span style={{ position: 'absolute', top: 12, left: 12, background: ts.bg, color: ts.color, fontSize: '0.68rem', fontWeight: 700, padding: '4px 10px', borderRadius: 20, backdropFilter: 'blur(8px)', border: `1px solid ${ts.color}22` }}>
+          {tag}
+        </span>
+      </div>
+
+      {/* Content */}
+      <div style={{ padding: '1.2rem 1.4rem 1.4rem' }}>
+        <h3 style={{ fontSize: '1rem', fontWeight: 750, color: 'var(--text)', marginBottom: '0.5rem', lineHeight: 1.35, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+          {article.title}
+        </h3>
+        <p style={{ fontSize: '0.82rem', color: 'var(--muted)', lineHeight: 1.6, marginBottom: '1rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+          {article.excerpt || article.body?.substring(0, 120) + '...'}
+        </p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', color: 'var(--muted-light)' }}>
+          <span>📖 {article.readTime || 3} min read</span>
+          <span>{formatDate(article.publishedAt)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function NewsSection() {
+  const { fetchArticles } = useApp();
+  const rev = useScrollReveal();
+  const [articles, setArticles] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const timerRef = useRef(null);
+
+  // Responsive: how many cards to show at once
+  const [cardsToShow, setCardsToShow] = useState(3);
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 640) setCardsToShow(1);
+      else if (window.innerWidth < 960) setCardsToShow(2);
+      else setCardsToShow(3);
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Fetch articles
+  useEffect(() => {
+    (async () => {
+      try {
+        const { articles: fetched } = await fetchArticles(1);
+        setArticles(fetched.length > 0 ? fetched : MOCK_ARTICLES);
+      } catch {
+        setArticles(MOCK_ARTICLES);
+      }
+    })();
+  }, [fetchArticles]);
+
+  const maxIndex = Math.max(0, articles.length - cardsToShow);
+
+  // Auto-swipe
+  useEffect(() => {
+    if (isPaused || articles.length <= cardsToShow) return;
+    timerRef.current = setInterval(() => {
+      setIsTransitioning(true);
+      setCurrentIndex(prev => prev >= maxIndex ? 0 : prev + 1);
+    }, 5000);
+    return () => clearInterval(timerRef.current);
+  }, [isPaused, articles.length, cardsToShow, maxIndex]);
+
+  const goTo = (idx) => {
+    setIsTransitioning(true);
+    setCurrentIndex(Math.max(0, Math.min(idx, maxIndex)));
+  };
+
+  const handleNav = (article) => {
+    window.location.href = '/news/' + article.slug;
+  };
+
+  if (articles.length === 0) return null;
+
+  const dotCount = Math.min(maxIndex + 1, 8);
+
+  return (
+    <section id="news" ref={rev.ref} className={`reveal ${rev.visible ? 'visible' : ''}`} style={{ ...secStyle('var(--bg-soft)'), overflow: 'hidden' }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '2.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <div style={tagStyle}>News & Insights</div>
+            <h2 style={h2Style}>Latest from the EV World</h2>
+            <p style={{ color: 'var(--muted)', maxWidth: 460, lineHeight: 1.7, fontSize: '0.92rem' }}>
+              Stay updated with the latest in EV charging, industry trends, and expert tips.
+            </p>
+          </div>
+          <a href="/news" style={{ ...btnBase('ghost', { padding: '0.6rem 1.2rem', fontSize: '0.82rem', textDecoration: 'none', borderRadius: 50 }) }}>
+            View All Articles →
+          </a>
+        </div>
+
+        {/* Carousel */}
+        <div
+          onMouseEnter={() => setIsPaused(true)}
+          onMouseLeave={() => setIsPaused(false)}
+          style={{ position: 'relative' }}
+        >
+          {/* Arrow buttons */}
+          {articles.length > cardsToShow && (
+            <>
+              <button
+                onClick={() => goTo(currentIndex - 1)}
+                disabled={currentIndex === 0}
+                style={{
+                  position: 'absolute', left: -16, top: '50%', transform: 'translateY(-50%)', zIndex: 10,
+                  width: 42, height: 42, borderRadius: '50%', border: '1px solid var(--glass-border)',
+                  background: 'var(--surface)', color: 'var(--text)', fontSize: '1.1rem', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: 'var(--shadow-md)', opacity: currentIndex === 0 ? 0.3 : 1,
+                  transition: 'all 0.2s', outline: 'none'
+                }}
+              >
+                ←
+              </button>
+              <button
+                onClick={() => goTo(currentIndex + 1)}
+                disabled={currentIndex >= maxIndex}
+                style={{
+                  position: 'absolute', right: -16, top: '50%', transform: 'translateY(-50%)', zIndex: 10,
+                  width: 42, height: 42, borderRadius: '50%', border: '1px solid var(--glass-border)',
+                  background: 'var(--surface)', color: 'var(--text)', fontSize: '1.1rem', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: 'var(--shadow-md)', opacity: currentIndex >= maxIndex ? 0.3 : 1,
+                  transition: 'all 0.2s', outline: 'none'
+                }}
+              >
+                →
+              </button>
+            </>
+          )}
+
+          {/* Cards track */}
+          <div style={{ overflow: 'hidden', borderRadius: 20 }}>
+            <div
+              onTransitionEnd={() => setIsTransitioning(false)}
+              style={{
+                display: 'flex',
+                gap: '1.2rem',
+                transform: `translateX(-${currentIndex * (100 / cardsToShow + 1.2)}%)`,
+                transition: isTransitioning ? 'transform 0.6s cubic-bezier(0.23, 1, 0.32, 1)' : 'none',
+              }}
+            >
+              {articles.map((article) => (
+                <div key={article._id} style={{ flex: `0 0 calc(${100 / cardsToShow}% - ${(cardsToShow - 1) * 1.2 / cardsToShow}rem)` }}>
+                  <NewsCard article={article} onClick={() => handleNav(article)} />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Dot Indicators */}
+          {articles.length > cardsToShow && (
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: '1.8rem' }}>
+              {Array.from({ length: dotCount }).map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => goTo(i)}
+                  style={{
+                    width: currentIndex === i ? 24 : 8,
+                    height: 8,
+                    borderRadius: 4,
+                    border: 'none',
+                    background: currentIndex === i ? 'var(--accent)' : 'var(--border)',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s',
+                    outline: 'none',
+                    boxShadow: currentIndex === i ? 'var(--neon-glow)' : 'none',
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 const AppleSvg = () => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
 );
