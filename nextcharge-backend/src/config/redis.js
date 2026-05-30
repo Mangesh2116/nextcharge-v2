@@ -27,15 +27,18 @@ const setCache = async (key, value, ttlSeconds = 300) => {
 };
 
 const getCache = async (key) => {
+  if (!client) return null; // 🔥 prevent crash
   const data = await client.get(key);
   return data ? JSON.parse(data) : null;
 };
 
 const deleteCache = async (key) => {
+  if (!client) return; // 🔥 prevent crash
   await client.del(key);
 };
 
 const deleteCachePattern = async (pattern) => {
+  if (!client) return; // 🔥 prevent crash
   const keys = await client.keys(pattern);
   if (keys.length) await client.del(keys);
 };

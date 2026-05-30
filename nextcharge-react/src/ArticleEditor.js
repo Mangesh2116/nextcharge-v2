@@ -73,8 +73,8 @@ export default function ArticleEditorModal() {
   const handleImageSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      showToast('Image must be less than 5MB', 'error');
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('Image must be less than 10MB', 'error');
       return;
     }
     setSelectedFile(file);
@@ -264,7 +264,7 @@ export default function ArticleEditorModal() {
                     <div style={{ textAlign: 'center', color: 'var(--muted)' }}>
                       <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📷</div>
                       <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Click to upload cover image</div>
-                      <div style={{ fontSize: '0.72rem', marginTop: 4 }}>JPEG, PNG, WebP — max 5MB</div>
+                      <div style={{ fontSize: '0.72rem', marginTop: 4 }}>JPEG, PNG, WebP — max 10MB</div>
                     </div>
                   )}
                 </div>
