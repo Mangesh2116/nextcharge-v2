@@ -70,7 +70,7 @@ export function useTiltCard(maxTilt = 8) {
 }
 
 // Scroll reveal using IntersectionObserver
-export function useScrollReveal(threshold = 0.15) {
+export function useScrollReveal(threshold = 0.02) {
   const ref = useRef(null);
   const [visible, setVisible] = useState(false);
 
