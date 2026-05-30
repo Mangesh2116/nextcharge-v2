@@ -834,16 +834,15 @@ export function NewsSection() {
   );
 }
 
-const AppleSvg = () => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
-);
-const PlaySvg = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M3.609 1.814L13.792 12 3.61 22.186a.996.996 0 0 1-.61-.92V2.734a1 1 0 0 1 .609-.92zm10.89 10.893l2.302 2.302-10.937 6.333 8.635-8.635zm3.199-3.199l2.302 2.302a1 1 0 0 1 0 1.38l-2.302 2.302L15.396 12l2.302-2.492zM5.864 2.658L16.8 8.99l-2.302 2.302L5.864 2.658z"/></svg>
+const AndroidSvg = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M17.6 9.48l1.79-3.1a0.56 0.56 0 0 0-.2-.77 0.57 0.57 0 0 0-.77.2L16.6 8.94A8.7 8.7 0 0 0 12 7.62a8.7 8.7 0 0 0-4.6 1.32L5.58 5.81a0.57 0.57 0 0 0-.77-.2 0.56 0.56 0 0 0-.2.77l1.79 3.1A9.09 9.09 0 0 0 3 17.25h18a9.09 9.09 0 0 0-3.4-7.77zm-10.16 4.59a0.84 0.84 0 1 1 .84-.84 0.84 0 0 1-.84.84zm9.12 0a0.84 0.84 0 1 1 .84-.84 0.84 0 0 1-.84.84z" />
+  </svg>
 );
 
 export function AppSection() {
   const rev = useScrollReveal();
-  const [hovApp, setHovApp] = useState(null);
+  const [hovApp, setHovApp] = useState(false);
   return (
     <section id="app" ref={rev.ref} className={`reveal ${rev.visible?'visible':''}`} style={{ ...secStyle('var(--bg-soft)'), textAlign:'center' }}>
       <div style={tagStyle}>Download the App</div>
@@ -852,17 +851,14 @@ export function AppSection() {
         Find nearby stations, start charging with a tap, track your sessions in real-time, and get instant payment receipts — everything you need, right from your phone.
       </p>
       <div style={{ display:'flex', gap:'1rem', justifyContent:'center', marginTop:'2.5rem', flexWrap:'wrap' }}>
-        <a href="https://apps.apple.com" target="_blank" rel="noopener noreferrer"
-          onMouseEnter={()=>setHovApp('apple')} onMouseLeave={()=>setHovApp(null)}
-          style={{ display:'flex', alignItems:'center', gap:12, background: hovApp==='apple'?'var(--accent-light)':'var(--glass-bg)', border: hovApp==='apple'?'1px solid var(--glass-border-hover)':'1px solid var(--glass-border)', borderRadius:14, padding:'0.85rem 1.6rem', cursor:'pointer', textDecoration:'none', transition:'all 0.25s', transform: hovApp==='apple'?'translateY(-2px)':'translateY(0)', boxShadow: hovApp==='apple'?'var(--neon-glow)':'var(--shadow-sm)' }}>
-          <span style={{ color:'var(--text)', display:'flex', alignItems:'center' }}><AppleSvg /></span>
-          <div style={{ textAlign:'left' }}><small style={{ display:'block', fontSize:'0.65rem', color:'var(--muted)', lineHeight:1.3 }}>Download on the</small><strong style={{ fontSize:'0.95rem', color:'var(--text)', letterSpacing:'-0.01em' }}>App Store</strong></div>
-        </a>
-        <a href="https://play.google.com" target="_blank" rel="noopener noreferrer"
-          onMouseEnter={()=>setHovApp('play')} onMouseLeave={()=>setHovApp(null)}
-          style={{ display:'flex', alignItems:'center', gap:12, background: hovApp==='play'?'var(--accent-light)':'var(--glass-bg)', border: hovApp==='play'?'1px solid var(--glass-border-hover)':'1px solid var(--glass-border)', borderRadius:14, padding:'0.85rem 1.6rem', cursor:'pointer', textDecoration:'none', transition:'all 0.25s', transform: hovApp==='play'?'translateY(-2px)':'translateY(0)', boxShadow: hovApp==='play'?'var(--neon-glow)':'var(--shadow-sm)' }}>
-          <span style={{ color:'var(--text)', display:'flex', alignItems:'center' }}><PlaySvg /></span>
-          <div style={{ textAlign:'left' }}><small style={{ display:'block', fontSize:'0.65rem', color:'var(--muted)', lineHeight:1.3 }}>Get it on</small><strong style={{ fontSize:'0.95rem', color:'var(--text)', letterSpacing:'-0.01em' }}>Google Play</strong></div>
+        <a href="/nextcharge.apk" download="nextcharge.apk"
+          onMouseEnter={()=>setHovApp(true)} onMouseLeave={()=>setHovApp(false)}
+          style={{ display:'flex', alignItems:'center', gap:14, background: hovApp?'var(--accent-light)':'var(--glass-bg)', border: hovApp?'1px solid var(--glass-border-hover)':'1px solid var(--glass-border)', borderRadius:16, padding:'0.95rem 2.2rem', cursor:'pointer', textDecoration:'none', transition:'all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1)', transform: hovApp?'translateY(-3px)':'translateY(0)', boxShadow: hovApp?'var(--neon-glow), var(--shadow-sm)':'var(--shadow-sm)' }}>
+          <span style={{ color:'var(--text)', display:'flex', alignItems:'center', transform: hovApp?'scale(1.08)':'scale(1)', transition:'all 0.25s' }}><AndroidSvg /></span>
+          <div style={{ textAlign:'left' }}>
+            <small style={{ display:'block', fontSize:'0.65rem', color:'var(--muted)', lineHeight:1.3 }}>Direct APK Download</small>
+            <strong style={{ fontSize:'1rem', color:'var(--text)', letterSpacing:'-0.01em' }}>Download our Android App</strong>
+          </div>
         </a>
       </div>
     </section>
