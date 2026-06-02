@@ -242,68 +242,38 @@ export function AppProvider({ children }) {
       return [];
     }
   }, []);
-
   // ─── OpenStreetMap / Overpass API Fetcher ──────────────────────────────────
   const fetchOSMChargingStations = useCallback(async (params) => {
     const { south, west, north, east, lat, lng, radius } = params;
     let query = '';
+    
     if (south !== undefined && west !== undefined && north !== undefined && east !== undefined) {
-      query = `(
-        node["amenity"="charging_station"](${south},${west},${north},${east});
-        way["amenity"="charging_station"](${south},${west},${north},${east});
-      );`;
+      query = `[out:json];node["amenity"="charging_station"](${south},${west},${north},${east});out;`;
     } else if (lat !== undefined && lng !== undefined) {
       const rad = radius || 10000;
-      query = `(
-        node["amenity"="charging_station"](around:${rad},${lat},${lng});
-        way["amenity"="charging_station"](around:${rad},${lat},${lng});
-      );`;
+      const deg = rad / 111000;
+      const s = lat - deg;
+      const w = lng - deg;
+      const n = lat + deg;
+      const e = lng + deg;
+      query = `[out:json];node["amenity"="charging_station"](${s},${w},${n},${e});out;`;
     } else {
       return [];
     }
 
     try {
-      const res = await fetch('https://overpass-api.de/api/interpreter', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `data=[out:json][timeout:25];${query}out body;>;out skel qt;`
-      });
+      const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
+      const res = await fetch(url);
       if (!res.ok) throw new Error(`Overpass API error: ${res.status}`);
       const data = await res.json();
       
       const stations = [];
-      const nodes = {};
-      
-      data.elements.forEach(el => {
-        if (el.type === 'node') {
-          nodes[el.id] = el;
-        }
-      });
+      if (!data.elements) return [];
 
-      data.elements.forEach(el => {
-        if (el.type === 'node' || el.type === 'way') {
-          let itemLat = el.lat;
-          let itemLng = el.lon;
-          
-          if (el.type === 'way' && el.nodes && el.nodes.length > 0) {
-            let sumLat = 0, sumLng = 0, count = 0;
-            el.nodes.forEach(nid => {
-              if (nodes[nid]) {
-                sumLat += nodes[nid].lat;
-                sumLng += nodes[nid].lon;
-                count++;
-              }
-            });
-            if (count > 0) {
-              itemLat = sumLat / count;
-              itemLng = sumLng / count;
-            }
-          }
-          
-          if (itemLat === undefined || itemLng === undefined) return;
-
+      data.elements.forEach((el, i) => {
+        if (el.type === 'node' && el.lat && el.lon) {
           const tags = el.tags || {};
-          const name = tags.name || tags.operator || tags.brand || 'OSM Charging Station';
+          const name = tags.name || tags.operator || tags.brand || 'EV Charging Station';
           
           const connectors = [];
           const text = `${name} ${tags['socket:ccs2']?'ccs2':''} ${tags['socket:type2']?'type2':''} ${tags['socket:chademo']?'chademo':''}`.toLowerCase();
@@ -346,7 +316,7 @@ export function AppProvider({ children }) {
           const fullAddr = [street, city].filter(Boolean).join(', ') || tags['addr:full'] || 'OpenStreetMap Location';
 
           stations.push({
-            _id: `osm_${el.type}_${el.id}`,
+            _id: `osm_node_${el.id}`,
             icon: power >= 50 ? '⚡' : '🔌',
             name,
             address: fullAddr,
@@ -356,8 +326,8 @@ export function AppProvider({ children }) {
             price: tags.fee === 'yes' ? '₹18/kWh' : tags.fee === 'no' ? 'Free' : '₹15/kWh',
             connectors,
             status: status === 'charging' ? 'busy' : status,
-            lat: itemLat,
-            lng: itemLng,
+            lat: el.lat,
+            lng: el.lon,
             _source: 'osm'
           });
         }
