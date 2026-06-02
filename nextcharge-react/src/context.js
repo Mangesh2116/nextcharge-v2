@@ -359,7 +359,7 @@ export function AppProvider({ children }) {
   }, []);
 
   // ─── OpenStreetMap / OSRM Router ──────────────────────────────────────────
-  const fetchOSMRoute = useCallback(async (startLng, startLat, destLng, destLat) => {
+  const fetchOSMRoute = useCallback(async (startLng, startLat, destLng, destLat, throwOnError = false) => {
     try {
       const r = await apiCall('/google/route', {
         method: 'POST',
@@ -369,7 +369,13 @@ export function AppProvider({ children }) {
           destination: { lat: destLat, lng: destLng }
         }
       });
-      if (!r.ok || !r.data?.data) return null;
+      if (!r.ok || !r.data?.data) {
+        if (throwOnError) {
+          const errMsg = r.error || r.data?.message || 'Failed to calculate driving route';
+          throw new Error(errMsg);
+        }
+        return null;
+      }
       return {
         geometry: r.data.data.geometry,
         distance: r.data.data.distance,
@@ -377,6 +383,7 @@ export function AppProvider({ children }) {
       };
     } catch (err) {
       console.error('fetchOSMRoute error:', err);
+      if (throwOnError) throw err;
       return null;
     }
   }, []);
@@ -398,8 +405,15 @@ export function AppProvider({ children }) {
     // SoC decrease per meter traveled
     const socPerMeter = (consumption / (batteryCap * 1000000)) * 100;
 
-    const baseRoute = await fetchOSMRoute(start.lng, start.lat, destination.lng, destination.lat);
-    if (!baseRoute) throw new Error("Could not find a driving route between the selected locations.");
+    let baseRoute;
+    try {
+      baseRoute = await fetchOSMRoute(start.lng, start.lat, destination.lng, destination.lat, true);
+    } catch (err) {
+      if (err.message.includes('No route found')) {
+        throw new Error(`Could not find a driving route between "${start.name}" (${start.lat.toFixed(4)}, ${start.lng.toFixed(4)}) and "${destination.name}" (${destination.lat.toFixed(4)}, ${destination.lng.toFixed(4)}). Please check if coordinates are correct and on the same continent.`);
+      }
+      throw new Error(`Routing server error: ${err.message}`);
+    }
 
     const coords = baseRoute.geometry.coordinates;
     
