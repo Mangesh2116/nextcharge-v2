@@ -28,32 +28,212 @@ export function StatsBar() {
   );
 }
 
+// ─── Visual SoC Graph Canvas Component ───────────────────────────────────────
+function SoCGraph({ socProfile }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    if (!canvasRef.current || !socProfile || socProfile.length === 0) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    
+    const dpr = window.devicePixelRatio || 1;
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    ctx.scale(dpr, dpr);
+
+    ctx.clearRect(0, 0, width, height);
+
+    const padLeft = 32;
+    const padRight = 16;
+    const padTop = 16;
+    const padBottom = 24;
+
+    const graphWidth = width - padLeft - padRight;
+    const graphHeight = height - padTop - padBottom;
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.lineWidth = 1;
+    
+    for (let pct = 0; pct <= 100; pct += 25) {
+      const y = padTop + graphHeight * (1 - pct / 100);
+      ctx.beginPath();
+      ctx.moveTo(padLeft, y);
+      ctx.lineTo(width - padRight, y);
+      ctx.stroke();
+      
+      ctx.fillStyle = 'var(--muted)';
+      ctx.font = '9px system-ui, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(`${pct}%`, padLeft - 6, y + 3);
+    }
+
+    const maxDist = socProfile[socProfile.length - 1].distance || 1;
+
+    ctx.beginPath();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = 'var(--accent)';
+    
+    socProfile.forEach((p, idx) => {
+      const x = padLeft + (p.distance / maxDist) * graphWidth;
+      const y = padTop + graphHeight * (1 - p.soc / 100);
+      if (idx === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    });
+    ctx.stroke();
+
+    ctx.beginPath();
+    const grad = ctx.createLinearGradient(0, padTop, 0, padTop + graphHeight);
+    grad.addColorStop(0, 'rgba(0, 255, 136, 0.25)');
+    grad.addColorStop(1, 'rgba(0, 255, 136, 0.01)');
+    ctx.fillStyle = grad;
+
+    socProfile.forEach((p, idx) => {
+      const x = padLeft + (p.distance / maxDist) * graphWidth;
+      const y = padTop + graphHeight * (1 - p.soc / 100);
+      if (idx === 0) {
+        ctx.moveTo(x, padTop + graphHeight);
+        ctx.lineTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    });
+    ctx.lineTo(padLeft + graphWidth, padTop + graphHeight);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = 'var(--muted)';
+    ctx.font = '9px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    for (let i = 0; i <= 4; i++) {
+      const val = (maxDist * i) / 4;
+      const x = padLeft + (i / 4) * graphWidth;
+      ctx.fillText(`${Math.round(val)} km`, x, height - 6);
+    }
+
+  }, [socProfile]);
+
+  return (
+    <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 12, padding: '12px 8px 4px', border: '1px solid var(--border)', marginBottom: 14 }}>
+      <div style={{ fontSize: '0.72rem', color: 'var(--muted)', fontWeight: 600, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
+        <span>🔋 SoC Profile vs Distance</span>
+        <span style={{ color: 'var(--accent)' }}>ABRP Simulation</span>
+      </div>
+      <canvas ref={canvasRef} style={{ width: '100%', height: 110, display: 'block' }} />
+    </div>
+  );
+}
+
+const EV_PRESETS = [
+  { name: 'Tata Nexon EV Max', batteryCapacity: 40.5, consumption: 145 },
+  { name: 'MG ZS EV', batteryCapacity: 50.3, consumption: 155 },
+  { name: 'Tesla Model 3 SR+', batteryCapacity: 60.0, consumption: 130 },
+  { name: 'BYD Atto 3', batteryCapacity: 60.48, consumption: 160 },
+  { name: 'Hyundai Ioniq 5', batteryCapacity: 72.6, consumption: 170 },
+  { name: 'Custom EV', batteryCapacity: 40.0, consumption: 150 }
+];
+
 export function MapSection({ onSearch, apiStations = [] }) {
-  const { setSelectedStation, setBookingModal, user, setAuthModal, showToast, fetchNearbyStations } = useApp();
+  const { 
+    setSelectedStation, 
+    setBookingModal, 
+    user, 
+    setAuthModal, 
+    showToast, 
+    fetchNearbyStations,
+    searchAddressNominatim,
+    fetchOSMChargingStations,
+    planEVRoute
+  } = useApp();
+
+  // Core Exploration States
   const [query, setQuery] = useState('');
   const [searchLoading, setSearchLoading] = useState(false);
   const [mapplsStations, setMapplsStations] = useState([]);
   const [mapplsLoading, setMapplsLoading] = useState(false);
-  const baseStations = mapplsStations.length ? mapplsStations : apiStations.length ? apiStations : STATIONS;
-  const [activePin, setActivePin] = useState(baseStations[0] || STATIONS[0]);
+  const [osmStations, setOsmStations] = useState([]);
+  const [osmLoading, setOsmLoading] = useState(false);
+
+  // Tab State
+  const [sidebarTab, setSidebarTab] = useState('explore'); // 'explore' | 'route'
+
+  // Route Planning States
+  const [startInput, setStartInput] = useState('');
+  const [destInput, setDestInput] = useState('');
+  const [startSuggestions, setStartSuggestions] = useState([]);
+  const [destSuggestions, setDestSuggestions] = useState([]);
+  const [startPlace, setStartPlace] = useState(null);
+  const [destPlace, setDestPlace] = useState(null);
+  
+  const [vehicleIdx, setVehicleIdx] = useState(0);
+  const [customBattery, setCustomBattery] = useState('40.0');
+  const [customConsumption, setCustomConsumption] = useState('150');
+  
+  const [initialSoC, setInitialSoC] = useState(100);
+  const [targetSoC, setTargetSoC] = useState(20);
+  const [minStopSoC, setMinStopSoC] = useState(12);
+
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [routeData, setRouteData] = useState(null);
+  const [routingError, setRoutingError] = useState('');
+
+  // Active Station Pin
+  const baseStations = [
+    ...osmStations, 
+    ...mapplsStations, 
+    ...apiStations
+  ];
+  const finalCandidates = baseStations.length ? baseStations : STATIONS;
+  const [activePin, setActivePin] = useState(finalCandidates[0]);
+
+  // Autocomplete debouncing hooks
+  useEffect(() => {
+    if (!startInput.trim() || startPlace?.name === startInput) {
+      setStartSuggestions([]);
+      return;
+    }
+    const timeout = setTimeout(async () => {
+      const res = await searchAddressNominatim(startInput);
+      setStartSuggestions(res);
+    }, 600);
+    return () => clearTimeout(timeout);
+  }, [startInput, startPlace, searchAddressNominatim]);
 
   useEffect(() => {
-    if (mapplsStations.length > 0) {
-      setActivePin(mapplsStations[0]);
-    } else if (apiStations.length > 0) {
-      setActivePin(apiStations[0]);
+    if (!destInput.trim() || destPlace?.name === destInput) {
+      setDestSuggestions([]);
+      return;
     }
-  }, [apiStations, mapplsStations]);
+    const timeout = setTimeout(async () => {
+      const res = await searchAddressNominatim(destInput);
+      setDestSuggestions(res);
+    }, 600);
+    return () => clearTimeout(timeout);
+  }, [destInput, destPlace, searchAddressNominatim]);
+
+  useEffect(() => {
+    const defaultCandidates = osmStations.length ? osmStations : mapplsStations.length ? mapplsStations : apiStations.length ? apiStations : STATIONS;
+    if (defaultCandidates.length > 0 && !activePin) {
+      setActivePin(defaultCandidates[0]);
+    }
+  }, [apiStations, mapplsStations, osmStations, activePin]);
+
   const [focusSearch, setFocusSearch] = useState(false);
-  const [filter, setFilter] = useState('All'); // 'All', 'Available Only', 'Fast DC'
+  const [filter, setFilter] = useState('All');
   const [mapLoaded, setMapLoaded] = useState(false);
-  const [userLoc, setUserLoc] = useState(null); // eslint-disable-line no-unused-vars
+  const [userLoc, setUserLoc] = useState(null);
   const rev = useScrollReveal();
 
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersGroupRef = useRef(null);
   const userLocMarkerRef = useRef(null);
+  const routePolylineRef = useRef(null);
   const fetchTimeoutRef = useRef(null);
 
   const handleBook = () => {
@@ -62,7 +242,6 @@ export function MapSection({ onSearch, apiStations = [] }) {
     setBookingModal(true);
   };
 
-  // Fetch real stations from Mappls for a given location
   const loadMapplsStations = useCallback(async (lat, lng, radius = 10000) => {
     setMapplsLoading(true);
     try {
@@ -71,13 +250,26 @@ export function MapSection({ onSearch, apiStations = [] }) {
         setMapplsStations(stations);
       }
     } catch (e) {
-      console.warn('Mappls fetch failed, using fallback data');
+      console.warn('Mappls fetch failed');
     } finally {
       setMapplsLoading(false);
     }
   }, [fetchNearbyStations]);
 
-  // Wait/check for Leaflet to load from CDN
+  const loadOSMStations = useCallback(async (lat, lng, radius = 10000) => {
+    setOsmLoading(true);
+    try {
+      const stations = await fetchOSMChargingStations({ lat, lng, radius });
+      if (stations && stations.length > 0) {
+        setOsmStations(stations);
+      }
+    } catch (e) {
+      console.warn('OSM Overpass fetch failed');
+    } finally {
+      setOsmLoading(false);
+    }
+  }, [fetchOSMChargingStations]);
+
   useEffect(() => {
     const checkL = setInterval(() => {
       if (window.L) {
@@ -98,15 +290,14 @@ export function MapSection({ onSearch, apiStations = [] }) {
         const { latitude, longitude } = position.coords;
         setUserLoc({ lat: latitude, lng: longitude });
 
-        // Fetch real stations for user's location
         loadMapplsStations(latitude, longitude, 10000);
+        loadOSMStations(latitude, longitude, 10000);
 
         if (mapInstanceRef.current) {
           if (zoomIn) {
             mapInstanceRef.current.setView([latitude, longitude], 14, { animate: true });
           }
 
-          // Render user pulsing marker
           if (userLocMarkerRef.current) {
             userLocMarkerRef.current.setLatLng([latitude, longitude]);
           } else {
@@ -140,11 +331,11 @@ export function MapSection({ onSearch, apiStations = [] }) {
         if (zoomIn) {
           let msg = 'Enable location permissions to find nearby chargers';
           if (error.code === 1) {
-            msg = 'Location permission denied. Please allow location access in your browser settings.';
+            msg = 'Location permission denied. Please allow settings.';
           } else if (error.code === 2) {
-            msg = 'Location unavailable. Please check if system/OS Location Services are enabled.';
+            msg = 'Location unavailable.';
           } else if (error.code === 3) {
-            msg = 'Location request timed out. Please try again.';
+            msg = 'Location timed out.';
           }
           showToast(msg, 'warning');
         }
@@ -186,47 +377,169 @@ export function MapSection({ onSearch, apiStations = [] }) {
 
     markersGroupRef.current.clearLayers();
 
-    const filtered = baseStations.filter(s => {
-      if (filter === 'Available Only') return s.status === 'available';
-      if (filter === 'Fast DC') return s.maxSpeed.includes('kW') && parseFloat(s.maxSpeed) >= 30;
-      return true;
-    });
-
-    filtered.forEach(s => {
-      const active = activePin && activePin._id === s._id;
-      const markerIcon = createCustomMarker(s, active);
-      const marker = window.L.marker([s.lat, s.lng], { icon: markerIcon });
-
-      const popupContent = `
-        <div style="font-family: 'Inter', sans-serif; padding: 4px; min-width: 180px;">
-          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
-            <span style="font-size: 14px;">${s.icon}</span>
-            <strong style="color: #0F172A; font-size: 0.88rem;">${s.name}</strong>
+    if (sidebarTab === 'route' && routeData) {
+      const startIcon = window.L.divIcon({
+        html: `
+          <div style="
+            width: 32px;
+            height: 32px;
+            background: #10B981;
+            border: 2.5px solid #ffffff;
+            border-radius: 50% 50% 50% 0;
+            transform: rotate(-45deg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 10px rgba(16,185,129,0.4);
+          ">
+            <div style="transform: rotate(45deg); font-size: 10px; font-weight: 800; color: #ffffff;">S</div>
           </div>
-          <div style="font-size: 0.72rem; color: #64748B; margin-bottom: 6px;">📍 ${s.address}</div>
-          <div style="display: flex; gap: 6px; font-size: 0.68rem; margin-bottom: 4px;">
-            <span style="background: ${s.status === 'available' ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)'}; color: ${s.status === 'available' ? '#059669' : '#D97706'}; padding: 1px 5px; border-radius: 4px; font-weight: 700;">
-              ${s.status === 'available' ? 'Available' : 'Busy'}
-            </span>
-            <span style="background: #F1F5F9; color: #334155; padding: 1px 5px; border-radius: 4px; font-weight: 600;">
-              ⚡ ${s.maxSpeed}
-            </span>
+        `,
+        className: 'route-start-marker',
+        iconSize: [32, 32],
+        iconAnchor: [16, 32]
+      });
+      window.L.marker([routeData.start.lat, routeData.start.lng], { icon: startIcon })
+        .bindPopup(`<strong>Start Position</strong><br/>${routeData.start.name}`)
+        .addTo(markersGroupRef.current);
+
+      const destIcon = window.L.divIcon({
+        html: `
+          <div style="
+            width: 32px;
+            height: 32px;
+            background: #EF4444;
+            border: 2.5px solid #ffffff;
+            border-radius: 50% 50% 50% 0;
+            transform: rotate(-45deg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 10px rgba(239,68,68,0.4);
+          ">
+            <div style="transform: rotate(45deg); font-size: 10px; font-weight: 800; color: #ffffff;">🏁</div>
           </div>
-        </div>
-      `;
+        `,
+        className: 'route-dest-marker',
+        iconSize: [32, 32],
+        iconAnchor: [16, 32]
+      });
+      window.L.marker([routeData.destination.lat, routeData.destination.lng], { icon: destIcon })
+        .bindPopup(`<strong>Destination</strong><br/>${routeData.destination.name}`)
+        .addTo(markersGroupRef.current);
 
-      marker.bindPopup(popupContent, { closeButton: false });
+      routeData.stops.forEach((stop, index) => {
+        const stopIcon = window.L.divIcon({
+          html: `
+            <div style="position: relative; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;">
+              <div style="position: absolute; inset: -3px; background: rgba(59,130,246,0.25); border-radius: 50%; animation: pulse-blue 2s infinite;"></div>
+              <div style="
+                width: 30px;
+                height: 30px;
+                background: #3B82F6;
+                border: 2px solid #ffffff;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 3px 8px rgba(59,130,246,0.5);
+                z-index: 2;
+              ">
+                <div style="font-size: 11px; color: white; font-weight: bold;">⚡</div>
+              </div>
+              <div style="
+                position: absolute;
+                top: -5px;
+                right: -5px;
+                background: #F43F5E;
+                color: white;
+                font-size: 8px;
+                font-weight: 800;
+                border-radius: 8px;
+                padding: 1px 4px;
+                border: 1.2px solid white;
+                z-index: 3;
+              ">
+                ${index + 1}
+              </div>
+            </div>
+          `,
+          className: 'route-stop-marker',
+          iconSize: [36, 36],
+          iconAnchor: [18, 18]
+        });
 
-      marker.on('click', () => {
-        setActivePin(s);
-        mapInstanceRef.current.setView([s.lat, s.lng], 13.5, { animate: true });
+        const popupContent = `
+          <div style="font-family: 'Inter', sans-serif; padding: 4px; min-width: 170px;">
+            <strong style="color: #3B82F6; font-size: 0.82rem;">⚡ Stop #${index + 1}: ${stop.name}</strong>
+            <div style="font-size: 0.7rem; color: #64748B; margin-top: 3px;">📍 ${stop.address}</div>
+            <hr style="border: none; border-top: 1px solid #E2E8F0; margin: 5px 0;" />
+            <div style="display: flex; justify-content: space-between; font-size: 0.7rem; margin-bottom: 2px;">
+              <span>Charge Level:</span>
+              <strong>${stop.arrivalSoC}% ➔ ${stop.departureSoC}%</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.7rem; margin-bottom: 2px;">
+              <span>Time Required:</span>
+              <strong style="color: #059669;">${stop.chargeTimeMinutes} mins</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.7rem;">
+              <span>Estimated Cost:</span>
+              <strong>₹${stop.cost}</strong>
+            </div>
+          </div>
+        `;
+
+        window.L.marker([stop.lat, stop.lng], { icon: stopIcon })
+          .bindPopup(popupContent, { closeButton: false })
+          .on('click', () => {
+            setActivePin(stop);
+          })
+          .addTo(markersGroupRef.current);
+      });
+    } else {
+      const filtered = finalCandidates.filter(s => {
+        if (filter === 'Available Only') return s.status === 'available';
+        if (filter === 'Fast DC') return s.maxSpeed && parseFloat(s.maxSpeed) >= 30;
+        return true;
       });
 
-      marker.addTo(markersGroupRef.current);
-    });
-  }, [filter, activePin, baseStations]); // eslint-disable-line react-hooks/exhaustive-deps
+      filtered.forEach(s => {
+        const active = activePin && activePin._id === s._id;
+        const markerIcon = createCustomMarker(s, active);
+        const marker = window.L.marker([s.lat, s.lng], { icon: markerIcon });
 
-  // Map Initialization
+        const popupContent = `
+          <div style="font-family: 'Inter', sans-serif; padding: 4px; min-width: 180px;">
+            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+              <span style="font-size: 14px;">${s.icon || '⚡'}</span>
+              <strong style="color: #0F172A; font-size: 0.88rem;">${s.name}</strong>
+            </div>
+            <div style="font-size: 0.72rem; color: #64748B; margin-bottom: 6px;">📍 ${s.address}</div>
+            <div style="display: flex; gap: 6px; font-size: 0.68rem; margin-bottom: 4px;">
+              <span style="background: ${s.status === 'available' ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)'}; color: ${s.status === 'available' ? '#059669' : '#D97706'}; padding: 1px 5px; border-radius: 4px; font-weight: 700;">
+                ${s.status === 'available' ? 'Available' : s.status === 'busy' ? 'Busy' : 'Offline'}
+              </span>
+              <span style="background: #F1F5F9; color: #334155; padding: 1px 5px; border-radius: 4px; font-weight: 600;">
+                ⚡ ${s.maxSpeed || '50 kW'}
+              </span>
+            </div>
+            ${s._source === 'osm' ? '<div style="font-size: 0.60rem; color: #94A3B8; margin-top: 4px; font-weight: 500;">Source: OpenStreetMap Data</div>' : ''}
+          </div>
+        `;
+
+        marker.bindPopup(popupContent, { closeButton: false });
+
+        marker.on('click', () => {
+          setActivePin(s);
+          mapInstanceRef.current.setView([s.lat, s.lng], 13.5, { animate: true });
+        });
+
+        marker.addTo(markersGroupRef.current);
+      });
+    }
+  }, [filter, activePin, finalCandidates, sidebarTab, routeData]);
+
+  // Map Initialization Effect
   useEffect(() => {
     if (!mapLoaded || !mapRef.current || mapInstanceRef.current) return;
 
@@ -248,22 +561,22 @@ export function MapSection({ onSearch, apiStations = [] }) {
 
     renderMarkers();
 
-    // Fetch real stations for initial map center
     loadMapplsStations(19.0596, 72.8656, 10000);
+    loadOSMStations(19.0596, 72.8656, 10000);
     locateUser(false);
 
-    // Debounced fetch on map move/zoom
     const onMoveEnd = () => {
+      if (sidebarTab === 'route' && routeData) return; // avoid fetching during route overview
       clearTimeout(fetchTimeoutRef.current);
       fetchTimeoutRef.current = setTimeout(() => {
         const center = map.getCenter();
         const bounds = map.getBounds();
         const ne = bounds.getNorthEast();
         const sw = bounds.getSouthWest();
-        // Approximate radius from the diagonal of the viewport
         const diagMeters = map.distance(ne, sw) / 2;
-        const radius = Math.min(Math.max(diagMeters, 2000), 50000); // clamp 2-50km
+        const radius = Math.min(Math.max(diagMeters, 2000), 40000);
         loadMapplsStations(center.lat, center.lng, Math.round(radius));
+        loadOSMStations(center.lat, center.lng, Math.round(radius));
       }, 1200);
     };
     map.on('moveend', onMoveEnd);
@@ -278,12 +591,35 @@ export function MapSection({ onSearch, apiStations = [] }) {
     };
   }, [mapLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Update markers when filters or active pin changes
+  // Route Polyline Draw Effect
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+
+    if (routePolylineRef.current) {
+      mapInstanceRef.current.removeLayer(routePolylineRef.current);
+      routePolylineRef.current = null;
+    }
+
+    if (sidebarTab === 'route' && routeData && routeData.routeGeometry) {
+      const leafletCoords = routeData.routeGeometry.coordinates.map(([lng, lat]) => [lat, lng]);
+      
+      routePolylineRef.current = window.L.polyline(leafletCoords, {
+        color: '#00FF88',
+        weight: 6.5,
+        opacity: 0.85,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(mapInstanceRef.current);
+
+      mapInstanceRef.current.fitBounds(routePolylineRef.current.getBounds(), { padding: [50, 50] });
+    }
+  }, [routeData, sidebarTab]);
+
   useEffect(() => {
     if (mapInstanceRef.current) {
       renderMarkers();
     }
-  }, [filter, activePin, renderMarkers]);
+  }, [filter, activePin, finalCandidates, sidebarTab, routeData, renderMarkers]);
 
   const handleSearchLocation = async (queryText) => {
     if (!queryText.trim()) return;
@@ -300,8 +636,8 @@ export function MapSection({ onSearch, apiStations = [] }) {
           mapInstanceRef.current.setView([targetLat, targetLng], 12.5, { animate: true });
         }
 
-        // Fetch real Mappls stations at searched location
         await loadMapplsStations(targetLat, targetLng, 10000);
+        await loadOSMStations(targetLat, targetLng, 10000);
         showToast(`Showing chargers near ${display_name.split(',')[0]}`, 'success');
       } else {
         showToast('Location not found in India', 'warning');
@@ -323,7 +659,55 @@ export function MapSection({ onSearch, apiStations = [] }) {
     if (!mapInstanceRef.current) return;
     const center = mapInstanceRef.current.getCenter();
     loadMapplsStations(center.lat, center.lng, 10000);
+    loadOSMStations(center.lat, center.lng, 10000);
     showToast('Refreshing nearby chargers...', 'info');
+  };
+
+  const handlePlanRoute = async () => {
+    if (!startPlace || !destPlace) {
+      showToast('Please select both start and destination points', 'warning');
+      return;
+    }
+    setRouteLoading(true);
+    setRoutingError('');
+    try {
+      const isCustom = EV_PRESETS[vehicleIdx].name === 'Custom EV';
+      const batteryVal = isCustom ? customBattery : EV_PRESETS[vehicleIdx].batteryCapacity;
+      const consumptionVal = isCustom ? customConsumption : EV_PRESETS[vehicleIdx].consumption;
+
+      const res = await planEVRoute({
+        start: startPlace,
+        destination: destPlace,
+        vehicle: {
+          batteryCapacity: batteryVal,
+          consumption: consumptionVal
+        },
+        initialSoC,
+        targetSoC,
+        minStopSoC
+      });
+
+      setRouteData(res);
+      showToast('Route generated successfully!', 'success');
+    } catch (e) {
+      console.error(e);
+      setRoutingError(e.message || 'Routing failed. Please verify your endpoints.');
+      showToast('Could not calculate EV route', 'error');
+    } finally {
+      setRouteLoading(false);
+    }
+  };
+
+  const clearPlannedRoute = () => {
+    setRouteData(null);
+    setStartPlace(null);
+    setDestPlace(null);
+    setStartInput('');
+    setDestInput('');
+    setRoutingError('');
+    if (mapInstanceRef.current && userLoc) {
+      mapInstanceRef.current.setView([userLoc.lat, userLoc.lng], 11.5);
+    }
   };
 
   return (
@@ -331,7 +715,7 @@ export function MapSection({ onSearch, apiStations = [] }) {
       <div style={tagStyle}>Live Tracking</div>
       <h2 style={h2Style}>Real-time EV Charging Map</h2>
       <p style={{ color:'var(--muted)', maxWidth:520, margin:'0 auto 2.5rem', lineHeight:1.7, fontSize:'0.95rem' }}>
-        Locate live chargers, filter by speeds, track live port occupancy, and lock your slot instantly.
+        Locate live chargers, plan road trips with optimal charging stops, and lock your slot instantly.
       </p>
 
       {/* Geocoding Search Input */}
@@ -344,10 +728,10 @@ export function MapSection({ onSearch, apiStations = [] }) {
       </form>
 
       {/* Main Map + Dashboard container */}
-      <div style={{ maxWidth:1100, margin:'0 auto', background:'var(--surface)', border:'1px solid var(--glass-border)', borderRadius:24, overflow:'hidden', boxShadow:'var(--shadow-xl)', display:'flex', flexWrap:'wrap', minHeight:480 }}>
+      <div style={{ maxWidth:1100, margin:'0 auto', background:'var(--surface)', border:'1px solid var(--glass-border)', borderRadius:24, overflow:'hidden', boxShadow:'var(--shadow-xl)', display:'flex', flexWrap:'wrap', minHeight:580 }}>
         
         {/* Left column: Leaflet Map */}
-        <div style={{ flex: '1 1 65%', minWidth: 320, height: 480, position: 'relative' }}>
+        <div style={{ flex: '1 1 60%', minWidth: 320, height: 580, position: 'relative' }}>
           <div ref={mapRef} style={{ width: '100%', height: '100%', background: 'var(--bg)' }} />
           
           {/* Floating Action Buttons */}
@@ -371,8 +755,6 @@ export function MapSection({ onSearch, apiStations = [] }) {
                 outline: 'none'
               }}
               title="Locate Me"
-              onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; e.currentTarget.style.borderColor = 'var(--border-accent)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.borderColor = 'var(--input-border)'; }}
             >
               🎯
             </button>
@@ -393,30 +775,26 @@ export function MapSection({ onSearch, apiStations = [] }) {
                 fontSize: '1.15rem',
                 transition: 'all 0.2s',
                 outline: 'none',
-                animation: mapplsLoading ? 'spin 1s linear infinite' : 'none'
+                animation: (mapplsLoading || osmLoading) ? 'spin 1s linear infinite' : 'none'
               }}
               title="Refresh Stations"
-              onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; e.currentTarget.style.borderColor = 'var(--border-accent)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.borderColor = 'var(--input-border)'; }}
             >
               🔄
             </button>
           </div>
 
-          {/* Mappls Loading Indicator */}
-          {mapplsLoading && (
+          {/* OSM / Mappls Loading Indicator */}
+          {(mapplsLoading || osmLoading) && (
             <div style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', zIndex: 1000, background: 'rgba(15,23,42,0.9)', backdropFilter: 'blur(10px)', padding: '6px 16px', borderRadius: 20, border: '1px solid var(--border-accent)', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 600 }}>
               <div style={{ width: 14, height: 14, border: '2px solid var(--border)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
-              Loading live stations...
+              Loading live chargers...
             </div>
           )}
 
-          {/* Powered by Mappls badge */}
-          {mapplsStations.length > 0 && (
-            <div style={{ position: 'absolute', bottom: 12, right: 12, zIndex: 1000, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(10px)', padding: '4px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)', fontSize: '0.65rem', color: 'rgba(255,255,255,0.6)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4 }}>
-              ⚡ {mapplsStations.length} live stations · Powered by Mappls
-            </div>
-          )}
+          {/* Powered by OpenStreetMap / Mappls badge */}
+          <div style={{ position: 'absolute', bottom: 12, right: 12, zIndex: 1000, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(10px)', padding: '4px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)', fontSize: '0.65rem', color: 'rgba(255,255,255,0.6)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4 }}>
+            🌍 OpenStreetMap Data Integrated · {finalCandidates.length} Active Stations
+          </div>
 
           {/* Floating EV Filters */}
           <div style={{ position: 'absolute', bottom: 12, left: 12, zIndex: 1000, display: 'flex', gap: 6, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(10px)', padding: '4px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)' }}>
@@ -434,7 +812,7 @@ export function MapSection({ onSearch, apiStations = [] }) {
                     padding: '6px 12px',
                     fontSize: '0.75rem',
                     fontWeight: 600,
-                    color: active ? '#ffffff' : 'rgba(255,255,255,0.7)',
+                    color: active ? '#0A0E17' : 'rgba(255,255,255,0.7)',
                     cursor: 'pointer',
                     transition: 'all 0.2s',
                     outline: 'none'
@@ -447,98 +825,406 @@ export function MapSection({ onSearch, apiStations = [] }) {
           </div>
         </div>
 
-        {/* Right column: Station Detail Dashboard */}
-        <div style={{ flex: '1 1 35%', minWidth: 300, background: 'var(--bg-alt)', borderLeft: '1px solid var(--glass-border)', padding: '1.8rem', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
-          {activePin ? (
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between', width: '100%' }}>
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.8rem' }}>
-                  <span style={{ fontSize: '2rem' }}>{activePin.icon || '⚡'}</span>
-                  <span style={{
-                    background: activePin.status === 'available' ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)',
-                    border: activePin.status === 'available' ? '1px solid rgba(16,185,129,0.2)' : '1px solid rgba(245,158,11,0.2)',
-                    color: activePin.status === 'available' ? 'var(--accent-dark)' : '#D97706',
-                    padding: '4px 10px',
-                    borderRadius: 30,
-                    fontSize: '0.75rem',
-                    fontWeight: 700,
-                    textTransform: 'capitalize'
-                  }}>
-                    ● {activePin.status}
-                  </span>
-                </div>
-                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text)', margin: '0 0 0.4rem', textAlign: 'left', lineHeight: 1.3 }}>{activePin.name}</h3>
-                <p style={{ fontSize: '0.82rem', color: 'var(--muted)', margin: '0 0 1.2rem', textAlign: 'left' }}>📍 {activePin.address}</p>
+        {/* Right column: Interactive Side Panel (Explore vs Route Planner) */}
+        <div style={{ flex: '1 1 40%', minWidth: 320, background: 'var(--bg-alt)', borderLeft: '1px solid var(--glass-border)', padding: '1.4rem', display: 'flex', flexDirection: 'column', boxSizing: 'border-box', overflowY: 'auto', maxHeight: 580 }}>
+          
+          {/* Tab Switcher */}
+          <div style={{ display: 'flex', background: 'rgba(0,0,0,0.15)', borderRadius: 12, padding: '4px', marginBottom: '1.2rem' }}>
+            <button
+              onClick={() => setSidebarTab('explore')}
+              style={{
+                flex: 1,
+                background: sidebarTab === 'explore' ? 'var(--surface)' : 'transparent',
+                border: 'none',
+                borderRadius: 8,
+                padding: '8px 0',
+                color: sidebarTab === 'explore' ? 'var(--text)' : 'var(--muted)',
+                fontWeight: 600,
+                fontSize: '0.82rem',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6
+              }}
+            >
+              🔍 Explore Chargers
+            </button>
+            <button
+              onClick={() => setSidebarTab('route')}
+              style={{
+                flex: 1,
+                background: sidebarTab === 'route' ? 'var(--surface)' : 'transparent',
+                border: 'none',
+                borderRadius: 8,
+                padding: '8px 0',
+                color: sidebarTab === 'route' ? 'var(--text)' : 'var(--muted)',
+                fontWeight: 600,
+                fontSize: '0.82rem',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6
+              }}
+            >
+              🗺️ ABRP Route Planner
+            </button>
+          </div>
 
-                {/* Specs Grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: '1.4rem' }}>
-                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px', textAlign: 'left' }}>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--muted)', marginBottom: 2 }}>Max Speed</div>
-                    <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text)' }}>⚡ {activePin.maxSpeed}</div>
+          {/* TAB 1: Explore Chargers Detail View */}
+          {sidebarTab === 'explore' && (
+            activePin ? (
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between', width: '100%' }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.8rem' }}>
+                    <span style={{ fontSize: '2rem' }}>{activePin.icon || '⚡'}</span>
+                    <span style={{
+                      background: activePin.status === 'available' ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)',
+                      border: activePin.status === 'available' ? '1px solid rgba(16,185,129,0.2)' : '1px solid rgba(245,158,11,0.2)',
+                      color: activePin.status === 'available' ? 'var(--accent)' : '#D97706',
+                      padding: '4px 10px',
+                      borderRadius: 30,
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      textTransform: 'capitalize'
+                    }}>
+                      ● {activePin.status}
+                    </span>
                   </div>
-                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px', textAlign: 'left' }}>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--muted)', marginBottom: 2 }}>Price</div>
-                    <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--accent-dark)' }}>{activePin.price}</div>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text)', margin: '0 0 0.4rem', textAlign: 'left', lineHeight: 1.3 }}>{activePin.name}</h3>
+                  <p style={{ fontSize: '0.82rem', color: 'var(--muted)', margin: '0 0 1.2rem', textAlign: 'left' }}>📍 {activePin.address}</p>
+
+                  {/* Specs Grid */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: '1.4rem' }}>
+                    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px', textAlign: 'left' }}>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--muted)', marginBottom: 2 }}>Max Speed</div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text)' }}>⚡ {activePin.maxSpeed || '50 kW'}</div>
+                    </div>
+                    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px', textAlign: 'left' }}>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--muted)', marginBottom: 2 }}>Price</div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--accent)' }}>{activePin.price || '₹15/kWh'}</div>
+                    </div>
+                    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px', textAlign: 'left' }}>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--muted)', marginBottom: 2 }}>Ports Open</div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text)' }}>🔌 {activePin.portsOpen || '—'}</div>
+                    </div>
+                    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px', textAlign: 'left' }}>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--muted)', marginBottom: 2 }}>Source</div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase' }}>{activePin._source || 'DB'}</div>
+                    </div>
                   </div>
-                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px', textAlign: 'left' }}>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--muted)', marginBottom: 2 }}>Ports Open</div>
-                    <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text)' }}>🔌 {activePin.portsOpen}</div>
-                  </div>
-                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px', textAlign: 'left' }}>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--muted)', marginBottom: 2 }}>Distance</div>
-                    <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text)' }}>🚗 {activePin.distance || '0.8 km'}</div>
+
+                  {/* Supported Connectors */}
+                  <div style={{ textAlign: 'left', marginBottom: '1.5rem' }}>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>Connectors Supported</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {activePin.connectors && activePin.connectors.map(c => (
+                        <span key={c} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '4px 8px', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                          🔌 {c}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
-                {/* Supported Connectors */}
-                <div style={{ textAlign: 'left', marginBottom: '1.5rem' }}>
-                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>Connectors Supported</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {activePin.connectors.map(c => (
-                      <span key={c} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '4px 8px', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                        🔌 {c}
-                      </span>
-                    ))}
-                  </div>
+                {/* Action Buttons */}
+                <div style={{ display: 'flex', gap: 8, marginTop: 'auto', width: '100%' }}>
+                  <a 
+                    href={`https://www.google.com/maps/dir/?api=1&destination=${activePin.lat},${activePin.lng}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      ...btnBase('ghost', {
+                        flex: '0 0 auto',
+                        padding: '0.75rem 1rem',
+                        borderRadius: 12,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        textDecoration: 'none'
+                      })
+                    }}
+                    title="Get Directions"
+                  >
+                    🗺️
+                  </a>
+                  <button 
+                    type="button"
+                    onClick={handleBook}
+                    style={{ ...btnBase('primary', { flex: 1, padding: '0.75rem', borderRadius: 12, fontSize: '0.88rem' }) }}
+                  >
+                    ⚡ Book Slot
+                  </button>
                 </div>
               </div>
-
-              {/* Action Buttons */}
-              <div style={{ display: 'flex', gap: 8, marginTop: 'auto', width: '100%' }}>
-                <a 
-                  href={`https://www.google.com/maps/dir/?api=1&destination=${activePin.lat},${activePin.lng}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    ...btnBase('ghost', {
-                      flex: '0 0 auto',
-                      padding: '0.75rem 1rem',
-                      borderRadius: 12,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      textDecoration: 'none'
-                    })
-                  }}
-                  title="Get Directions"
-                >
-                  🗺️
-                </a>
-                <button 
-                  type="button"
-                  onClick={handleBook}
-                  style={{ ...btnBase('primary', { flex: 1, padding: '0.75rem', borderRadius: 12, fontSize: '0.88rem' }) }}
-                >
-                  ⚡ Book Slot
-                </button>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--muted)', padding: '2rem 0' }}>
+                <div style={{ fontSize: '3rem', marginBottom: '0.8rem' }}>🗺️</div>
+                <p style={{ fontSize: '0.88rem' }}>Select a charging station on the map to view details & book slot</p>
               </div>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--muted)' }}>
-              <div style={{ fontSize: '3rem', marginBottom: '0.8rem' }}>🗺️</div>
-              <p style={{ fontSize: '0.88rem' }}>Select a charging station on the map to view details & book slot</p>
+            )
+          )}
+
+          {/* TAB 2: ABRP Route Planner View */}
+          {sidebarTab === 'route' && (
+            <div style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: 12, textAlign: 'left' }}>
+              
+              {!routeData && (
+                <>
+                  <div style={{ fontSize: '1rem', fontWeight: 750, color: 'var(--text)', marginBottom: 4 }}>ABRP Route Planner</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--muted)', marginBottom: 8 }}>Input start, destination, and select your EV. We will map optimal charging stops.</div>
+                  
+                  {/* Start Location Input with Autocomplete */}
+                  <div style={{ position: 'relative' }}>
+                    <label style={{ fontSize: '0.72rem', color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: 4 }}>Start Location</label>
+                    <input
+                      value={startInput}
+                      onChange={e => {
+                        setStartInput(e.target.value);
+                        if (!e.target.value) setStartPlace(null);
+                      }}
+                      placeholder="Search starting point..."
+                      style={inpStyle}
+                    />
+                    {startSuggestions.length > 0 && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, zIndex: 1050, boxShadow: 'var(--shadow-lg)', maxHeight: 200, overflowY: 'auto', marginTop: 4 }}>
+                        {startSuggestions.map((place, idx) => (
+                          <div
+                            key={idx}
+                            onClick={() => {
+                              setStartPlace(place);
+                              setStartInput(place.name);
+                              setStartSuggestions([]);
+                            }}
+                            style={{ padding: '10px 14px', fontSize: '0.78rem', color: 'var(--text)', borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background 0.2s' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                          >
+                            📍 {place.name}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Destination Location Input with Autocomplete */}
+                  <div style={{ position: 'relative' }}>
+                    <label style={{ fontSize: '0.72rem', color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: 4 }}>Destination</label>
+                    <input
+                      value={destInput}
+                      onChange={e => {
+                        setDestInput(e.target.value);
+                        if (!e.target.value) setDestPlace(null);
+                      }}
+                      placeholder="Search destination..."
+                      style={inpStyle}
+                    />
+                    {destSuggestions.length > 0 && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, zIndex: 1050, boxShadow: 'var(--shadow-lg)', maxHeight: 200, overflowY: 'auto', marginTop: 4 }}>
+                        {destSuggestions.map((place, idx) => (
+                          <div
+                            key={idx}
+                            onClick={() => {
+                              setDestPlace(place);
+                              setDestInput(place.name);
+                              setDestSuggestions([]);
+                            }}
+                            style={{ padding: '10px 14px', fontSize: '0.78rem', color: 'var(--text)', borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background 0.2s' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                          >
+                            📍 {place.name}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Vehicle Presets */}
+                  <div>
+                    <label style={{ fontSize: '0.72rem', color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: 4 }}>EV Vehicle Model</label>
+                    <select
+                      value={vehicleIdx}
+                      onChange={e => setVehicleIdx(parseInt(e.target.value))}
+                      style={inpStyle}
+                    >
+                      {EV_PRESETS.map((ev, idx) => (
+                        <option key={idx} value={idx}>{ev.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Custom Vehicle Parameters (if Custom selected) */}
+                  {EV_PRESETS[vehicleIdx].name === 'Custom EV' && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <div>
+                        <label style={{ fontSize: '0.68rem', color: 'var(--muted)', display: 'block', marginBottom: 2 }}>Battery Cap (kWh)</label>
+                        <input type="number" value={customBattery} onChange={e => setCustomBattery(e.target.value)} style={inpStyle} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.68rem', color: 'var(--muted)', display: 'block', marginBottom: 2 }}>Consumption (Wh/km)</label>
+                        <input type="number" value={customConsumption} onChange={e => setCustomConsumption(e.target.value)} style={inpStyle} />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* SoC Config sliders */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, background: 'rgba(255,255,255,0.02)', padding: 12, borderRadius: 12, border: '1px solid var(--border)' }}>
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', marginBottom: 2 }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>Initial Battery (SoC)</span>
+                        <strong style={{ color: 'var(--accent)' }}>{initialSoC}%</strong>
+                      </div>
+                      <input type="range" min="20" max="100" value={initialSoC} onChange={e => setInitialSoC(parseInt(e.target.value))} style={{ width: '100%', accentColor: 'var(--accent)' }} />
+                    </div>
+
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', marginBottom: 2 }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>Desired Arrival Battery</span>
+                        <strong style={{ color: 'var(--accent)' }}>{targetSoC}%</strong>
+                      </div>
+                      <input type="range" min="10" max="80" value={targetSoC} onChange={e => setTargetSoC(parseInt(e.target.value))} style={{ width: '100%', accentColor: 'var(--accent)' }} />
+                    </div>
+
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', marginBottom: 2 }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>Min Charger Stop Limit</span>
+                        <strong style={{ color: '#EF4444' }}>{minStopSoC}%</strong>
+                      </div>
+                      <input type="range" min="5" max="30" value={minStopSoC} onChange={e => setMinStopSoC(parseInt(e.target.value))} style={{ width: '100%', accentColor: 'var(--accent)' }} />
+                    </div>
+                  </div>
+
+                  {routingError && (
+                    <div style={{ color: '#EF4444', fontSize: '0.75rem', fontWeight: 600, padding: 8, background: 'rgba(239,68,68,0.08)', borderRadius: 8, border: '1px solid rgba(239,68,68,0.2)' }}>
+                      ⚠️ {routingError}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handlePlanRoute}
+                    disabled={routeLoading}
+                    style={{
+                      ...btnBase('primary', {
+                        padding: '0.85rem',
+                        borderRadius: 14,
+                        fontSize: '0.88rem',
+                        fontWeight: 700,
+                        marginTop: 6,
+                        width: '100%',
+                        cursor: routeLoading ? 'not-allowed' : 'pointer'
+                      })
+                    }}
+                  >
+                    {routeLoading ? 'Simulating Route Stops...' : '⚡ Calculate EV Route'}
+                  </button>
+                </>
+              )}
+
+              {/* ROUTE RESULTS PANEL */}
+              {routeData && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text)' }}>Trip Overview</div>
+                    <button
+                      onClick={clearPlannedRoute}
+                      style={{ background: 'none', border: 'none', color: '#EF4444', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Clear Route
+                    </button>
+                  </div>
+
+                  {/* Quick summary grid */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, background: 'rgba(255,255,255,0.02)', padding: 12, borderRadius: 12, border: '1px solid var(--border)' }}>
+                    <div style={{ textAlign: 'left' }}>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>Total Distance</div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text)' }}>🚗 {routeData.summary.totalDistanceKm} km</div>
+                    </div>
+                    <div style={{ textAlign: 'left' }}>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>Total Cost</div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--accent)' }}>₹{routeData.summary.totalCost}</div>
+                    </div>
+                    <div style={{ textAlign: 'left' }}>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>Driving Duration</div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text)' }}>⏱️ {routeData.summary.totalDrivingTimeMinutes} mins</div>
+                    </div>
+                    <div style={{ textAlign: 'left' }}>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>Charging Time</div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#3B82F6' }}>⚡ {routeData.summary.totalChargingTimeMinutes} mins</div>
+                    </div>
+                  </div>
+
+                  {/* SoC profile canvas graph */}
+                  <SoCGraph socProfile={routeData.socProfile} />
+
+                  {/* Itinerary / Charging Stops */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text)' }}>Planned Charging Stops ({routeData.stops.length})</div>
+                    
+                    {routeData.stops.length === 0 ? (
+                      <div style={{ fontSize: '0.78rem', color: 'var(--muted)', background: 'rgba(255,255,255,0.02)', padding: 10, borderRadius: 8, textAlign: 'center', border: '1px dashed var(--border)' }}>
+                        🔋 No charging stops required for this route!
+                      </div>
+                    ) : (
+                      routeData.stops.map((stop, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            background: 'var(--surface)',
+                            border: '1px solid var(--border)',
+                            borderRadius: 12,
+                            padding: '10px 12px',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            transition: 'all 0.2s',
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border-accent)'}
+                          onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+                        >
+                          <div style={{ textAlign: 'left', maxWidth: '75%' }}>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ background: '#3B82F6', color: 'white', fontSize: '9px', borderRadius: '50%', width: 14, height: 14, display: 'inline-flex', alignItems: 'center', justifySelf: 'center', justifyContent: 'center' }}>
+                                {idx + 1}
+                              </span>
+                              {stop.name}
+                            </div>
+                            <div style={{ fontSize: '0.68rem', color: 'var(--muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📍 {stop.address}</div>
+                            <div style={{ display: 'flex', gap: 10, fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: 4 }}>
+                              <span>🔋 {stop.arrivalSoC}% ➔ {stop.departureSoC}%</span>
+                              <span style={{ color: 'var(--accent)' }}>⚡ {stop.maxSpeed}</span>
+                            </div>
+                          </div>
+
+                          <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                            <span style={{ fontSize: '0.78rem', fontWeight: 750, color: '#3B82F6' }}>+{stop.chargeTimeMinutes}m</span>
+                            <button
+                              onClick={() => {
+                                if (mapInstanceRef.current) {
+                                  mapInstanceRef.current.setView([stop.lat, stop.lng], 14, { animate: true });
+                                  setActivePin(stop);
+                                }
+                              }}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem', padding: '2px 6px', outline: 'none' }}
+                              title="Center Stop"
+                            >
+                              🎯
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                </div>
+              )}
+
             </div>
           )}
+
         </div>
 
       </div>

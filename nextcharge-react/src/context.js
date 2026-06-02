@@ -225,9 +225,387 @@ export function AppProvider({ children }) {
     }
   }, []);
 
+  // ─── OpenStreetMap / Nominatim Search ───────────────────────────────────────
+  const searchAddressNominatim = useCallback(async (queryText) => {
+    if (!queryText?.trim()) return [];
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(queryText)}&limit=5`);
+      if (!res.ok) throw new Error(`Nominatim geocoding error: ${res.status}`);
+      const data = await res.json();
+      return data.map(item => ({
+        name: item.display_name,
+        lat: parseFloat(item.lat),
+        lng: parseFloat(item.lon),
+      }));
+    } catch (err) {
+      console.error('searchAddressNominatim error:', err);
+      return [];
+    }
+  }, []);
+
+  // ─── OpenStreetMap / Overpass API Fetcher ──────────────────────────────────
+  const fetchOSMChargingStations = useCallback(async (params) => {
+    const { south, west, north, east, lat, lng, radius } = params;
+    let query = '';
+    if (south !== undefined && west !== undefined && north !== undefined && east !== undefined) {
+      query = `(
+        node["amenity"="charging_station"](${south},${west},${north},${east});
+        way["amenity"="charging_station"](${south},${west},${north},${east});
+      );`;
+    } else if (lat !== undefined && lng !== undefined) {
+      const rad = radius || 10000;
+      query = `(
+        node["amenity"="charging_station"](around:${rad},${lat},${lng});
+        way["amenity"="charging_station"](around:${rad},${lat},${lng});
+      );`;
+    } else {
+      return [];
+    }
+
+    try {
+      const res = await fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `data=[out:json][timeout:25];${query}out body;>;out skel qt;`
+      });
+      if (!res.ok) throw new Error(`Overpass API error: ${res.status}`);
+      const data = await res.json();
+      
+      const stations = [];
+      const nodes = {};
+      
+      data.elements.forEach(el => {
+        if (el.type === 'node') {
+          nodes[el.id] = el;
+        }
+      });
+
+      data.elements.forEach(el => {
+        if (el.type === 'node' || el.type === 'way') {
+          let itemLat = el.lat;
+          let itemLng = el.lon;
+          
+          if (el.type === 'way' && el.nodes && el.nodes.length > 0) {
+            let sumLat = 0, sumLng = 0, count = 0;
+            el.nodes.forEach(nid => {
+              if (nodes[nid]) {
+                sumLat += nodes[nid].lat;
+                sumLng += nodes[nid].lon;
+                count++;
+              }
+            });
+            if (count > 0) {
+              itemLat = sumLat / count;
+              itemLng = sumLng / count;
+            }
+          }
+          
+          if (itemLat === undefined || itemLng === undefined) return;
+
+          const tags = el.tags || {};
+          const name = tags.name || tags.operator || tags.brand || 'OSM Charging Station';
+          
+          const connectors = [];
+          const text = `${name} ${tags['socket:ccs2']?'ccs2':''} ${tags['socket:type2']?'type2':''} ${tags['socket:chademo']?'chademo':''}`.toLowerCase();
+          if (tags['socket:ccs2'] || tags['socket:ccs2:combo'] || tags['socket:combo'] || text.includes('ccs')) {
+            connectors.push('CCS2');
+          }
+          if (tags['socket:type2'] || tags['socket:type2_combo'] || tags['socket:type2_cable'] || text.includes('type 2') || text.includes('type2')) {
+            connectors.push('Type 2 AC');
+          }
+          if (tags['socket:chademo'] || text.includes('chademo')) {
+            connectors.push('CHAdeMO');
+          }
+          if (tags['socket:schuko'] || text.includes('schuko')) {
+            connectors.push('Schuko AC');
+          }
+          if (connectors.length === 0) {
+            connectors.push('CCS2', 'Type 2 AC');
+          }
+
+          let power = 50;
+          if (tags.power) {
+            power = parseFloat(tags.power);
+          } else if (tags.max_power) {
+            power = parseFloat(tags.max_power);
+          } else {
+            if (text.includes('fast') || text.includes('dc')) power = 60;
+            if (text.includes('supercharger')) power = 150;
+            if (text.includes('slow') || text.includes('ac')) power = 7.2;
+          }
+          if (isNaN(power)) power = 50;
+
+          const totalConnectors = parseInt(tags.capacity) || connectors.length || 2;
+          const rand = Math.random();
+          const status = rand > 0.4 ? 'available' : rand > 0.15 ? 'charging' : 'offline';
+          const availCount = status === 'available' ? Math.max(1, Math.floor(Math.random() * totalConnectors)) : 0;
+          const portsOpen = `${availCount}/${totalConnectors}`;
+
+          const street = tags['addr:street'] || '';
+          const city = tags['addr:city'] || '';
+          const fullAddr = [street, city].filter(Boolean).join(', ') || tags['addr:full'] || 'OpenStreetMap Location';
+
+          stations.push({
+            _id: `osm_${el.type}_${el.id}`,
+            icon: power >= 50 ? '⚡' : '🔌',
+            name,
+            address: fullAddr,
+            distance: '—',
+            portsOpen,
+            maxSpeed: `${power} kW`,
+            price: tags.fee === 'yes' ? '₹18/kWh' : tags.fee === 'no' ? 'Free' : '₹15/kWh',
+            connectors,
+            status: status === 'charging' ? 'busy' : status,
+            lat: itemLat,
+            lng: itemLng,
+            _source: 'osm'
+          });
+        }
+      });
+      return stations;
+    } catch (err) {
+      console.error('fetchOSMChargingStations error:', err);
+      return [];
+    }
+  }, []);
+
+  // ─── OpenStreetMap / OSRM Router ──────────────────────────────────────────
+  const fetchOSMRoute = useCallback(async (startLng, startLat, destLng, destLat) => {
+    try {
+      const url = `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${destLng},${destLat}?overview=full&geometries=geojson`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`OSRM routing error: ${res.status}`);
+      const data = await res.json();
+      if (!data.routes || data.routes.length === 0) return null;
+      return {
+        geometry: data.routes[0].geometry,
+        distance: data.routes[0].distance,
+        duration: data.routes[0].duration,
+      };
+    } catch (err) {
+      console.error('fetchOSMRoute error:', err);
+      return null;
+    }
+  }, []);
+
+  // ─── ABRP EV Routing Simulation Algorithm ──────────────────────────────────
+  const planEVRoute = useCallback(async (params) => {
+    const {
+      start,      // { name, lat, lng }
+      destination,// { name, lat, lng }
+      vehicle,    // { batteryCapacity, consumption }
+      initialSoC, // e.g. 100
+      targetSoC,  // e.g. 20
+      minStopSoC, // e.g. 10
+    } = params;
+
+    const batteryCap = parseFloat(vehicle.batteryCapacity);
+    const consumption = parseFloat(vehicle.consumption);
+    
+    // SoC decrease per meter traveled
+    const socPerMeter = (consumption / (batteryCap * 1000000)) * 100;
+
+    const baseRoute = await fetchOSMRoute(start.lng, start.lat, destination.lng, destination.lat);
+    if (!baseRoute) throw new Error("Could not find a driving route between the selected locations.");
+
+    const coords = baseRoute.geometry.coordinates;
+    
+    let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+    coords.forEach(([lng, lat]) => {
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
+    });
+
+    const buffer = 0.08;
+    const chargers = await fetchOSMChargingStations({
+      south: minLat - buffer,
+      west: minLng - buffer,
+      north: maxLat + buffer,
+      east: maxLng + buffer,
+    });
+
+    const dbStations = await searchStations('').catch(() => []) || [];
+    const allCandidateStations = [...dbStations, ...chargers];
+
+    const seenIds = new Set();
+    const uniqueCandidates = [];
+    allCandidateStations.forEach(s => {
+      const key = `${s.lat.toFixed(4)}_${s.lng.toFixed(4)}`;
+      if (!seenIds.has(s._id) && !seenIds.has(key)) {
+        seenIds.add(s._id);
+        seenIds.add(key);
+        uniqueCandidates.push(s);
+      }
+    });
+
+    const getDistMeters = (lat1, lon1, lat2, lon2) => {
+      const R = 6371e3;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    };
+
+    let currentSoC = initialSoC;
+    let stops = [];
+    let pathIndex = 0;
+    
+    let socProfile = [{ distance: 0, soc: initialSoC }];
+    let cumulativeDist = 0;
+    let initialSoCLocal = initialSoC;
+
+    for (let i = 1; i < coords.length; i++) {
+      const [lng1, lat1] = coords[i - 1];
+      const [lng2, lat2] = coords[i];
+      const segmentDist = getDistMeters(lat1, lng1, lat2, lng2);
+      
+      cumulativeDist += segmentDist;
+      currentSoC -= segmentDist * socPerMeter;
+
+      socProfile.push({ distance: cumulativeDist / 1000, soc: Math.max(0, currentSoC) });
+
+      if (currentSoC <= minStopSoC) {
+        let bestStation = null;
+        let bestScore = -Infinity;
+        let bestStationIndex = i;
+
+        for (let j = Math.max(0, i - 150); j < i; j++) {
+          const [rLng, rLat] = coords[j];
+          
+          for (const station of uniqueCandidates) {
+            const distFromRoute = getDistMeters(rLat, rLng, station.lat, station.lng);
+            if (distFromRoute > 8000) continue;
+
+            let legDistToStation = 0;
+            for (let k = pathIndex + 1; k <= j; k++) {
+              legDistToStation += getDistMeters(coords[k-1][1], coords[k-1][0], coords[k][1], coords[k][0]);
+            }
+            legDistToStation += distFromRoute;
+
+            const actualSocAtStation = initialSoCLocal - (legDistToStation * socPerMeter);
+
+            if (actualSocAtStation < 2) continue;
+
+            const power = parseFloat(station.maxSpeed) || 50;
+            const score = (power * 2) - (distFromRoute / 100) + (actualSocAtStation * 1.5);
+            
+            if (score > bestScore) {
+              if (stops.length > 0 && stops[stops.length - 1]._id === station._id) continue;
+              bestScore = score;
+              bestStation = station;
+              bestStationIndex = j;
+            }
+          }
+        }
+
+        if (bestStation) {
+          const targetCharge = 80;
+          let legDistToStation = 0;
+          for (let k = pathIndex + 1; k <= bestStationIndex; k++) {
+            legDistToStation += getDistMeters(coords[k-1][1], coords[k-1][0], coords[k][1], coords[k][0]);
+          }
+          const arrivalSoC = initialSoCLocal - (legDistToStation * socPerMeter);
+          const chargeNeeded = targetCharge - arrivalSoC;
+          const kwhNeeded = (chargeNeeded / 100) * batteryCap;
+          const chargerPower = parseFloat(bestStation.maxSpeed) || 50;
+          const chargeTimeMin = Math.round((kwhNeeded / chargerPower) * 60) + 5;
+
+          stops.push({
+            ...bestStation,
+            arrivalSoC: Math.max(0, Math.round(arrivalSoC)),
+            departureSoC: targetCharge,
+            chargeTimeMinutes: chargeTimeMin,
+            kwhAdded: parseFloat(Math.max(0, kwhNeeded).toFixed(1)),
+            cost: Math.round(Math.max(0, kwhNeeded) * 15),
+            distanceAlongRouteKm: parseFloat((cumulativeDist / 1000).toFixed(1))
+          });
+
+          currentSoC = targetCharge;
+          initialSoCLocal = targetCharge;
+          pathIndex = bestStationIndex;
+          
+          socProfile.push({ distance: cumulativeDist / 1000, soc: targetCharge });
+        } else {
+          break;
+        }
+      }
+    }
+
+    const finalSoc = currentSoC;
+    if (finalSoc < targetSoC) {
+      if (stops.length > 0) {
+        const lastStop = stops[stops.length - 1];
+        const deficit = targetSoC - finalSoc;
+        const newDepartureSoC = Math.min(95, lastStop.departureSoC + deficit);
+        const addedSoC = newDepartureSoC - lastStop.departureSoC;
+        const addedKWh = (addedSoC / 100) * batteryCap;
+        const chargerPower = parseFloat(lastStop.maxSpeed) || 50;
+        
+        lastStop.departureSoC = newDepartureSoC;
+        lastStop.chargeTimeMinutes += Math.round((addedKWh / chargerPower) * 60);
+        lastStop.kwhAdded = parseFloat((lastStop.kwhAdded + addedKWh).toFixed(1));
+        lastStop.cost = Math.round(lastStop.kwhAdded * 15);
+      }
+    }
+
+    let fullCoords = [];
+    let legs = [];
+    const waypoints = [start, ...stops, destination];
+    
+    let totalDrivingDuration = 0;
+    let totalDistanceMeters = 0;
+
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      const legStart = waypoints[i];
+      const legEnd = waypoints[i + 1];
+      const legRoute = await fetchOSMRoute(legStart.lng, legStart.lat, legEnd.lng, legEnd.lat);
+      
+      if (legRoute) {
+        fullCoords = [...fullCoords, ...legRoute.geometry.coordinates];
+        totalDrivingDuration += legRoute.duration;
+        totalDistanceMeters += legRoute.distance;
+        legs.push({
+          distance: legRoute.distance,
+          duration: legRoute.duration,
+          geometry: legRoute.geometry
+        });
+      } else {
+        fullCoords = [...fullCoords, [legStart.lng, legStart.lat], [legEnd.lng, legEnd.lat]];
+      }
+    }
+
+    const totalChargingTime = stops.reduce((acc, s) => acc + s.chargeTimeMinutes, 0);
+    const totalTripDuration = totalDrivingDuration + (totalChargingTime * 60);
+    const totalCost = stops.reduce((acc, s) => acc + s.cost, 0);
+
+    return {
+      start,
+      destination,
+      stops,
+      routeGeometry: {
+        type: 'LineString',
+        coordinates: fullCoords
+      },
+      socProfile,
+      summary: {
+        totalDistanceKm: parseFloat((totalDistanceMeters / 1000).toFixed(1)),
+        totalDrivingTimeMinutes: Math.round(totalDrivingDuration / 60),
+        totalChargingTimeMinutes: totalChargingTime,
+        totalDurationMinutes: Math.round(totalTripDuration / 60),
+        totalCost,
+      }
+    };
+  }, [fetchOSMRoute, fetchOSMChargingStations, searchStations]);
+
   return (
-    <Ctx.Provider value={{ user, token, toasts, showToast, authModal, setAuthModal, bookingModal, setBookingModal, selectedStation, setSelectedStation, backendOnline, login, signup, logout, googleLogin, createBooking, searchStations, fetchNearbyStations, theme, toggleTheme, articleEditorModal, setArticleEditorModal, fetchArticles, fetchArticle, fetchAdminArticles, createArticle, updateArticle, deleteArticle }}>
+    <Ctx.Provider value={{ user, token, toasts, showToast, authModal, setAuthModal, bookingModal, setBookingModal, selectedStation, setSelectedStation, backendOnline, login, signup, logout, googleLogin, createBooking, searchStations, fetchNearbyStations, theme, toggleTheme, articleEditorModal, setArticleEditorModal, fetchArticles, fetchArticle, fetchAdminArticles, createArticle, updateArticle, deleteArticle, searchAddressNominatim, fetchOSMChargingStations, fetchOSMRoute, planEVRoute }}>
       {children}
     </Ctx.Provider>
   );
 }
+
