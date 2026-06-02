@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useApp } from './context';
 import { useCountUp, useScrollReveal, useTiltCard } from './hooks';
 import { STATS, STATIONS, FILTER_TABS, CONNECTOR_TYPES, HOW_STEPS } from './data';
@@ -183,13 +183,13 @@ export function MapSection({ onSearch, apiStations = [] }) {
   const [routingError, setRoutingError] = useState('');
 
   // Active Station Pin
-  const baseStations = [
+  const baseStations = useMemo(() => [
     ...osmStations, 
     ...mapplsStations, 
     ...apiStations
-  ];
-  const finalCandidates = baseStations.length ? baseStations : STATIONS;
-  const [activePin, setActivePin] = useState(finalCandidates[0]);
+  ], [osmStations, mapplsStations, apiStations]);
+  const finalCandidates = baseStations;
+  const [activePin, setActivePin] = useState(null);
 
   // Autocomplete debouncing hooks
   useEffect(() => {
@@ -217,11 +217,15 @@ export function MapSection({ onSearch, apiStations = [] }) {
   }, [destInput, destPlace, searchAddressNominatim]);
 
   useEffect(() => {
-    const defaultCandidates = osmStations.length ? osmStations : mapplsStations.length ? mapplsStations : apiStations.length ? apiStations : STATIONS;
-    if (defaultCandidates.length > 0 && !activePin) {
-      setActivePin(defaultCandidates[0]);
+    const defaultCandidates = baseStations;
+    if (defaultCandidates.length > 0) {
+      if (!activePin || !defaultCandidates.some(s => s._id === activePin._id)) {
+        setActivePin(defaultCandidates[0]);
+      }
+    } else {
+      setActivePin(null);
     }
-  }, [apiStations, mapplsStations, osmStations, activePin]);
+  }, [baseStations, activePin]);
 
   const [focusSearch, setFocusSearch] = useState(false);
   const [filter, setFilter] = useState('All');

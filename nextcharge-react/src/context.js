@@ -259,14 +259,37 @@ export function AppProvider({ children }) {
       query = `[out:json];node["amenity"="charging_station"](${s},${w},${n},${e});out;`;
     } else {
       return [];
+    }    const mirrors = [
+      'https://overpass.kumi.systems/api/interpreter',
+      'https://overpass.openstreetmap.ru/api/interpreter',
+      'https://overpass-api.de/api/interpreter'
+    ];
+
+    let data = null;
+    let success = false;
+
+    for (const mirror of mirrors) {
+      try {
+        const url = `${mirror}?data=${encodeURIComponent(query)}`;
+        const res = await fetch(url);
+        if (res.ok) {
+          data = await res.json();
+          success = true;
+          break;
+        } else {
+          console.warn(`Mirror ${mirror} returned error status: ${res.status}`);
+        }
+      } catch (err) {
+        console.warn(`Failed to fetch from Overpass mirror: ${mirror}`, err);
+      }
+    }
+
+    if (!success || !data) {
+      console.error('All Overpass API mirrors failed to return charging stations.');
+      return [];
     }
 
     try {
-      const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`Overpass API error: ${res.status}`);
-      const data = await res.json();
-      
       const stations = [];
       if (!data.elements) return [];
 
@@ -334,7 +357,7 @@ export function AppProvider({ children }) {
       });
       return stations;
     } catch (err) {
-      console.error('fetchOSMChargingStations error:', err);
+      console.error('Error parsing element data:', err);
       return [];
     }
   }, []);
