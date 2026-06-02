@@ -29,17 +29,21 @@ export function StatsBar() {
 }
 
 export function MapSection({ onSearch, apiStations = [] }) {
-  const { setSelectedStation, setBookingModal, user, setAuthModal, showToast } = useApp();
+  const { setSelectedStation, setBookingModal, user, setAuthModal, showToast, fetchNearbyStations } = useApp();
   const [query, setQuery] = useState('');
   const [searchLoading, setSearchLoading] = useState(false);
-  const baseStations = apiStations.length ? apiStations : STATIONS;
+  const [mapplsStations, setMapplsStations] = useState([]);
+  const [mapplsLoading, setMapplsLoading] = useState(false);
+  const baseStations = mapplsStations.length ? mapplsStations : apiStations.length ? apiStations : STATIONS;
   const [activePin, setActivePin] = useState(baseStations[0] || STATIONS[0]);
 
   useEffect(() => {
-    if (apiStations.length > 0) {
+    if (mapplsStations.length > 0) {
+      setActivePin(mapplsStations[0]);
+    } else if (apiStations.length > 0) {
       setActivePin(apiStations[0]);
     }
-  }, [apiStations]);
+  }, [apiStations, mapplsStations]);
   const [focusSearch, setFocusSearch] = useState(false);
   const [filter, setFilter] = useState('All'); // 'All', 'Available Only', 'Fast DC'
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -50,12 +54,28 @@ export function MapSection({ onSearch, apiStations = [] }) {
   const mapInstanceRef = useRef(null);
   const markersGroupRef = useRef(null);
   const userLocMarkerRef = useRef(null);
+  const fetchTimeoutRef = useRef(null);
 
   const handleBook = () => {
     if (!user) { setAuthModal('login'); return; }
     setSelectedStation(activePin);
     setBookingModal(true);
   };
+
+  // Fetch real stations from Mappls for a given location
+  const loadMapplsStations = useCallback(async (lat, lng, radius = 10000) => {
+    setMapplsLoading(true);
+    try {
+      const stations = await fetchNearbyStations(lat, lng, radius);
+      if (stations && stations.length > 0) {
+        setMapplsStations(stations);
+      }
+    } catch (e) {
+      console.warn('Mappls fetch failed, using fallback data');
+    } finally {
+      setMapplsLoading(false);
+    }
+  }, [fetchNearbyStations]);
 
   // Wait/check for Leaflet to load from CDN
   useEffect(() => {
@@ -77,6 +97,9 @@ export function MapSection({ onSearch, apiStations = [] }) {
       (position) => {
         const { latitude, longitude } = position.coords;
         setUserLoc({ lat: latitude, lng: longitude });
+
+        // Fetch real stations for user's location
+        loadMapplsStations(latitude, longitude, 10000);
 
         if (mapInstanceRef.current) {
           if (zoomIn) {
@@ -109,7 +132,7 @@ export function MapSection({ onSearch, apiStations = [] }) {
           }
 
           if (zoomIn) {
-            showToast('Located! Displaying nearest chargers', 'success');
+            showToast('Located! Fetching real-time chargers nearby', 'success');
           }
         }
       },
@@ -215,9 +238,30 @@ export function MapSection({ onSearch, apiStations = [] }) {
     mapInstanceRef.current = map;
 
     renderMarkers();
+
+    // Fetch real stations for initial map center
+    loadMapplsStations(19.0596, 72.8656, 10000);
     locateUser(false);
 
+    // Debounced fetch on map move/zoom
+    const onMoveEnd = () => {
+      clearTimeout(fetchTimeoutRef.current);
+      fetchTimeoutRef.current = setTimeout(() => {
+        const center = map.getCenter();
+        const bounds = map.getBounds();
+        const ne = bounds.getNorthEast();
+        const sw = bounds.getSouthWest();
+        // Approximate radius from the diagonal of the viewport
+        const diagMeters = map.distance(ne, sw) / 2;
+        const radius = Math.min(Math.max(diagMeters, 2000), 50000); // clamp 2-50km
+        loadMapplsStations(center.lat, center.lng, Math.round(radius));
+      }, 1200);
+    };
+    map.on('moveend', onMoveEnd);
+
     return () => {
+      map.off('moveend', onMoveEnd);
+      clearTimeout(fetchTimeoutRef.current);
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
@@ -234,7 +278,7 @@ export function MapSection({ onSearch, apiStations = [] }) {
 
   const handleSearchLocation = async (queryText) => {
     if (!queryText.trim()) return;
-    setSearchLoading(false);
+    setSearchLoading(true);
     try {
       const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(queryText)}&countrycodes=in`);
       const data = await res.json();
@@ -245,28 +289,18 @@ export function MapSection({ onSearch, apiStations = [] }) {
 
         if (mapInstanceRef.current) {
           mapInstanceRef.current.setView([targetLat, targetLng], 12.5, { animate: true });
-
-          // Find nearest station
-          let nearest = null;
-          let minDist = Infinity;
-          baseStations.forEach(s => {
-            const dist = Math.pow(s.lat - targetLat, 2) + Math.pow(s.lng - targetLng, 2);
-            if (dist < minDist) {
-              minDist = dist;
-              nearest = s;
-            }
-          });
-
-          if (nearest) {
-            setActivePin(nearest);
-            showToast(`Found: ${display_name.split(',')[0]}`, 'success');
-          }
         }
+
+        // Fetch real Mappls stations at searched location
+        await loadMapplsStations(targetLat, targetLng, 10000);
+        showToast(`Showing chargers near ${display_name.split(',')[0]}`, 'success');
       } else {
         showToast('Location not found in India', 'warning');
       }
     } catch {
       showToast('Search error. Please try again.', 'error');
+    } finally {
+      setSearchLoading(false);
     }
   };
 
@@ -274,6 +308,13 @@ export function MapSection({ onSearch, apiStations = [] }) {
     e.preventDefault();
     handleSearchLocation(query);
     onSearch(query);
+  };
+
+  const handleRefreshStations = () => {
+    if (!mapInstanceRef.current) return;
+    const center = mapInstanceRef.current.getCenter();
+    loadMapplsStations(center.lat, center.lng, 10000);
+    showToast('Refreshing nearby chargers...', 'info');
   };
 
   return (
@@ -300,7 +341,7 @@ export function MapSection({ onSearch, apiStations = [] }) {
         <div style={{ flex: '1 1 65%', minWidth: 320, height: 480, position: 'relative' }}>
           <div ref={mapRef} style={{ width: '100%', height: '100%', background: 'var(--bg)' }} />
           
-          {/* Floating Action Button (Locate Me) */}
+          {/* Floating Action Buttons */}
           <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 1000, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <button 
               type="button"
@@ -326,7 +367,47 @@ export function MapSection({ onSearch, apiStations = [] }) {
             >
               🎯
             </button>
+            <button 
+              type="button"
+              onClick={handleRefreshStations}
+              style={{
+                background: 'var(--surface)',
+                border: '1px solid var(--input-border)',
+                borderRadius: 12,
+                width: 42,
+                height: 42,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: 'var(--shadow-md)',
+                cursor: 'pointer',
+                fontSize: '1.15rem',
+                transition: 'all 0.2s',
+                outline: 'none',
+                animation: mapplsLoading ? 'spin 1s linear infinite' : 'none'
+              }}
+              title="Refresh Stations"
+              onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; e.currentTarget.style.borderColor = 'var(--border-accent)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.borderColor = 'var(--input-border)'; }}
+            >
+              🔄
+            </button>
           </div>
+
+          {/* Mappls Loading Indicator */}
+          {mapplsLoading && (
+            <div style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', zIndex: 1000, background: 'rgba(15,23,42,0.9)', backdropFilter: 'blur(10px)', padding: '6px 16px', borderRadius: 20, border: '1px solid var(--border-accent)', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 600 }}>
+              <div style={{ width: 14, height: 14, border: '2px solid var(--border)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+              Loading live stations...
+            </div>
+          )}
+
+          {/* Powered by Mappls badge */}
+          {mapplsStations.length > 0 && (
+            <div style={{ position: 'absolute', bottom: 12, right: 12, zIndex: 1000, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(10px)', padding: '4px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)', fontSize: '0.65rem', color: 'rgba(255,255,255,0.6)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4 }}>
+              ⚡ {mapplsStations.length} live stations · Powered by Mappls
+            </div>
+          )}
 
           {/* Floating EV Filters */}
           <div style={{ position: 'absolute', bottom: 12, left: 12, zIndex: 1000, display: 'flex', gap: 6, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(10px)', padding: '4px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)' }}>

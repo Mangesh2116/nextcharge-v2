@@ -166,8 +166,67 @@ export function AppProvider({ children }) {
     return true;
   }, [token]);
 
+  // ─── Mappls Nearby Stations ─────────────────────────────────────────────────
+  const fetchNearbyStations = useCallback(async (lat, lng, radius = 5000) => {
+    try {
+      const ep = `/mappls/nearby?lat=${lat}&lng=${lng}&radius=${radius}`;
+      const r = await apiCall(ep);
+      if (!r.ok || !r.data?.data) return [];
+
+      return r.data.data.map((place, i) => {
+        // Parse connector types from keywords/name
+        const text = `${place.placeName} ${place.keywords || ''}`.toLowerCase();
+        const connectors = [];
+        if (text.includes('ccs') || text.includes('dc fast')) connectors.push('CCS2');
+        if (text.includes('chademo')) connectors.push('CHAdeMO');
+        if (text.includes('type 2') || text.includes('ac')) connectors.push('Type 2 AC');
+        if (text.includes('bharat')) connectors.push('Bharat DC');
+        if (connectors.length === 0) connectors.push('CCS2', 'Type 2 AC');
+
+        // Infer speed from keywords
+        let maxSpeed = '50 kW';
+        if (text.includes('fast') || text.includes('dc')) maxSpeed = '60 kW';
+        if (text.includes('supercharger') || text.includes('ultra')) maxSpeed = '150 kW';
+        if (text.includes('slow') || (text.includes('ac') && !text.includes('dc'))) maxSpeed = '7.2 kW';
+
+        // Icon based on name
+        let icon = '⚡';
+        if (text.includes('tata')) icon = '🔋';
+        else if (text.includes('ather')) icon = '🛵';
+        else if (text.includes('bpcl') || text.includes('iocl') || text.includes('hpcl')) icon = '⛽';
+        else if (text.includes('reliance') || text.includes('jio')) icon = '🏪';
+        else if (text.includes('mg') || text.includes('hyundai') || text.includes('mercedes')) icon = '🚗';
+        else if (text.includes('chargezone') || text.includes('statiq') || text.includes('fortum')) icon = '🔌';
+
+        const distKm = place.distance != null
+          ? (place.distance / 1000).toFixed(1) + ' km'
+          : '—';
+
+        return {
+          _id: place.eLoc || `mappls_${i}`,
+          icon,
+          name: place.placeName || 'EV Charging Station',
+          address: place.placeAddress || '',
+          distance: distKm,
+          portsOpen: '—',
+          maxSpeed,
+          price: '₹15/kWh',
+          connectors,
+          status: 'available',
+          lat: place.latitude,
+          lng: place.longitude,
+          mapPos: null,
+          _source: 'mappls'
+        };
+      });
+    } catch (err) {
+      console.error('fetchNearbyStations error:', err);
+      return [];
+    }
+  }, []);
+
   return (
-    <Ctx.Provider value={{ user, token, toasts, showToast, authModal, setAuthModal, bookingModal, setBookingModal, selectedStation, setSelectedStation, backendOnline, login, signup, logout, googleLogin, createBooking, searchStations, theme, toggleTheme, articleEditorModal, setArticleEditorModal, fetchArticles, fetchArticle, fetchAdminArticles, createArticle, updateArticle, deleteArticle }}>
+    <Ctx.Provider value={{ user, token, toasts, showToast, authModal, setAuthModal, bookingModal, setBookingModal, selectedStation, setSelectedStation, backendOnline, login, signup, logout, googleLogin, createBooking, searchStations, fetchNearbyStations, theme, toggleTheme, articleEditorModal, setArticleEditorModal, fetchArticles, fetchArticle, fetchAdminArticles, createArticle, updateArticle, deleteArticle }}>
       {children}
     </Ctx.Provider>
   );
