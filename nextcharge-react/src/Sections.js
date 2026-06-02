@@ -210,6 +210,24 @@ function getDistanceMeters(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
+// Format duration in seconds to human-readable form (d, hr, min, sec)
+function formatDuration(totalSeconds) {
+  if (totalSeconds === undefined || totalSeconds === null || totalSeconds <= 0) return '0 min';
+  const d = Math.floor(totalSeconds / (24 * 3600));
+  const h = Math.floor((totalSeconds % (24 * 3600)) / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = Math.round(totalSeconds % 60);
+
+  const parts = [];
+  if (d > 0) parts.push(`${d} day${d > 1 ? 's' : ''}`);
+  if (h > 0) parts.push(`${h} hr${h > 1 ? 's' : ''}`);
+  if (m > 0) parts.push(`${m} min${m > 1 ? 's' : ''}`);
+  if (s > 0) parts.push(`${s} sec`);
+  
+  if (parts.length === 0) return '0 min';
+  return parts.join(' ');
+}
+
 // ─── Custom Google Maps Blue Dot Geolocation Marker ──────────────────────────
 const getUserLocIcon = () => {
   const svg = `
@@ -449,6 +467,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersGroupRef = useRef([]);
+  const routeMarkersRef = useRef([]);
   const userLocMarkerRef = useRef(null);
   const routePolylineRef = useRef(null);
   const fetchTimeoutRef = useRef(null);
@@ -589,7 +608,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
   const renderMarkers = useCallback(() => {
     if (!mapInstanceRef.current || !mapLoaded) return;
 
-    // Clear existing markers and clusterer
+    // Clear existing station markers and clusterer
     if (markersGroupRef.current && markersGroupRef.current.length > 0) {
       markersGroupRef.current.forEach(m => m.setMap(null));
     }
@@ -600,13 +619,21 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
       clustererRef.current = null;
     }
 
+    // Clear existing route markers
+    if (routeMarkersRef.current && routeMarkersRef.current.length > 0) {
+      routeMarkersRef.current.forEach(m => m.setMap(null));
+    }
+    routeMarkersRef.current = [];
+
+    // 1. Render Route start, destination, and charging stops (if active)
     if (sidebarTab === 'route' && routeData) {
       // Start Marker
       const startMarker = new window.google.maps.Marker({
         position: { lat: routeData.start.lat, lng: routeData.start.lng },
         map: mapInstanceRef.current,
         icon: getStartIcon(),
-        title: 'Start Position'
+        title: 'Start Position',
+        zIndex: 9999
       });
       const startInfoWindow = new window.google.maps.InfoWindow({
         content: `<div style="color: #0F172A;"><strong>Start Position</strong><br/>${routeData.start.name}</div>`
@@ -614,14 +641,15 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
       startMarker.addListener('click', () => {
         startInfoWindow.open(mapInstanceRef.current, startMarker);
       });
-      markersGroupRef.current.push(startMarker);
+      routeMarkersRef.current.push(startMarker);
 
       // Destination Marker
       const destMarker = new window.google.maps.Marker({
         position: { lat: routeData.destination.lat, lng: routeData.destination.lng },
         map: mapInstanceRef.current,
         icon: getDestIcon(),
-        title: 'Destination'
+        title: 'Destination',
+        zIndex: 9999
       });
       const destInfoWindow = new window.google.maps.InfoWindow({
         content: `<div style="color: #0F172A;"><strong>Destination</strong><br/>${routeData.destination.name}</div>`
@@ -629,7 +657,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
       destMarker.addListener('click', () => {
         destInfoWindow.open(mapInstanceRef.current, destMarker);
       });
-      markersGroupRef.current.push(destMarker);
+      routeMarkersRef.current.push(destMarker);
 
       // Stops Markers
       routeData.stops.forEach((stop, index) => {
@@ -637,7 +665,8 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
           position: { lat: stop.lat, lng: stop.lng },
           map: mapInstanceRef.current,
           icon: getStopIcon(index),
-          title: `Stop #${index + 1}: ${stop.name}`
+          title: `Stop #${index + 1}: ${stop.name}`,
+          zIndex: 9999
         });
 
         const popupContent = `
@@ -669,64 +698,65 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
           setActivePin(stop);
         });
 
-        markersGroupRef.current.push(stopMarker);
+        routeMarkersRef.current.push(stopMarker);
+      });
+    }
+
+    // 2. Render all background candidate charging station markers (always visible)
+    const filtered = finalCandidates.filter(s => {
+      if (filter === 'Available Only') return s.status === 'available';
+      if (filter === 'Fast DC') return s.maxSpeed && parseFloat(s.maxSpeed) >= 30;
+      return true;
+    });
+
+    filtered.forEach(s => {
+      const active = activePin && activePin._id === s._id;
+      const marker = new window.google.maps.Marker({
+        position: { lat: s.lat, lng: s.lng },
+        map: mapInstanceRef.current,
+        icon: getMarkerIcon(s.status, active),
+        title: s.name,
+        zIndex: 500
       });
 
-    } else {
-      const filtered = finalCandidates.filter(s => {
-        if (filter === 'Available Only') return s.status === 'available';
-        if (filter === 'Fast DC') return s.maxSpeed && parseFloat(s.maxSpeed) >= 30;
-        return true;
-      });
-
-      filtered.forEach(s => {
-        const active = activePin && activePin._id === s._id;
-        const marker = new window.google.maps.Marker({
-          position: { lat: s.lat, lng: s.lng },
-          map: mapInstanceRef.current,
-          icon: getMarkerIcon(s.status, active),
-          title: s.name
-        });
-
-        const popupContent = `
-          <div style="font-family: 'Inter', sans-serif; padding: 4px; min-width: 180px; color: #0F172A;">
-            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
-              <span style="font-size: 14px;">${s.icon || '⚡'}</span>
-              <strong style="color: #0F172A; font-size: 0.88rem;">${s.name}</strong>
-            </div>
-            <div style="font-size: 0.72rem; color: #64748B; margin-bottom: 6px;">📍 ${s.address}</div>
-            <div style="display: flex; gap: 6px; font-size: 0.68rem; margin-bottom: 4px;">
-              <span style="background: ${s.status === 'available' ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)'}; color: ${s.status === 'available' ? '#059669' : '#D97706'}; padding: 1px 5px; border-radius: 4px; font-weight: 700;">
-                ${s.status === 'available' ? 'Available' : s.status === 'busy' ? 'Busy' : 'Offline'}
-              </span>
-              <span style="background: #F1F5F9; color: #334155; padding: 1px 5px; border-radius: 4px; font-weight: 600;">
-                ⚡ ${s.maxSpeed || '50 kW'}
-              </span>
-            </div>
-            <div style="font-size: 0.60rem; color: #94A3B8; margin-top: 4px; font-weight: 500;">Source: ${s._source === 'mappls' ? 'Mappls' : 'NextCharge'} Network</div>
+      const popupContent = `
+        <div style="font-family: 'Inter', sans-serif; padding: 4px; min-width: 180px; color: #0F172A;">
+          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+            <span style="font-size: 14px;">${s.icon || '⚡'}</span>
+            <strong style="color: #0F172A; font-size: 0.88rem;">${s.name}</strong>
           </div>
-        `;
+          <div style="font-size: 0.72rem; color: #64748B; margin-bottom: 6px;">📍 ${s.address}</div>
+          <div style="display: flex; gap: 6px; font-size: 0.68rem; margin-bottom: 4px;">
+            <span style="background: ${s.status === 'available' ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)'}; color: ${s.status === 'available' ? '#059669' : '#D97706'}; padding: 1px 5px; border-radius: 4px; font-weight: 700;">
+              ${s.status === 'available' ? 'Available' : s.status === 'busy' ? 'Busy' : 'Offline'}
+            </span>
+            <span style="background: #F1F5F9; color: #334155; padding: 1px 5px; border-radius: 4px; font-weight: 600;">
+              ⚡ ${s.maxSpeed || '50 kW'}
+            </span>
+          </div>
+          <div style="font-size: 0.60rem; color: #94A3B8; margin-top: 4px; font-weight: 500;">Source: ${s._source === 'mappls' ? 'Mappls' : 'NextCharge'} Network</div>
+        </div>
+      `;
 
-        const infoWindow = new window.google.maps.InfoWindow({
-          content: popupContent
-        });
-
-        marker.addListener('click', () => {
-          infoWindow.open(mapInstanceRef.current, marker);
-          setActivePin(s);
-          mapInstanceRef.current.panTo({ lat: s.lat, lng: s.lng });
-        });
-
-        markersGroupRef.current.push(marker);
+      const infoWindow = new window.google.maps.InfoWindow({
+        content: popupContent
       });
 
-      // Clustering normal pins
-      if (window.markerClusterer && markersGroupRef.current.length > 0) {
-        clustererRef.current = new window.markerClusterer.MarkerClusterer({
-          map: mapInstanceRef.current,
-          markers: markersGroupRef.current
-        });
-      }
+      marker.addListener('click', () => {
+        infoWindow.open(mapInstanceRef.current, marker);
+        setActivePin(s);
+        mapInstanceRef.current.panTo({ lat: s.lat, lng: s.lng });
+      });
+
+      markersGroupRef.current.push(marker);
+    });
+
+    // Cluster the background station markers
+    if (window.markerClusterer && markersGroupRef.current.length > 0) {
+      clustererRef.current = new window.markerClusterer.MarkerClusterer({
+        map: mapInstanceRef.current,
+        markers: markersGroupRef.current
+      });
     }
   }, [filter, activePin, finalCandidates, sidebarTab, routeData, mapLoaded]);
 
@@ -1458,11 +1488,11 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
                     </div>
                     <div style={{ textAlign: 'left' }}>
                       <div style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>Driving Duration</div>
-                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text)' }}>⏱️ {routeData.summary.totalDrivingTimeMinutes} mins</div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text)' }}>⏱️ {formatDuration(routeData.summary.totalDrivingTimeSeconds || (routeData.summary.totalDrivingTimeMinutes * 60))}</div>
                     </div>
                     <div style={{ textAlign: 'left' }}>
                       <div style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>Charging Time</div>
-                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#3B82F6' }}>⚡ {routeData.summary.totalChargingTimeMinutes} mins</div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#3B82F6' }}>⚡ {formatDuration(routeData.summary.totalChargingTimeSeconds || (routeData.summary.totalChargingTimeMinutes * 60))}</div>
                     </div>
                   </div>
 

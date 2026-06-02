@@ -602,8 +602,11 @@ export function AppProvider({ children }) {
       summary: {
         totalDistanceKm: parseFloat((totalDistanceMeters / 1000).toFixed(1)),
         totalDrivingTimeMinutes: Math.round(totalDrivingDuration / 60),
+        totalDrivingTimeSeconds: Math.round(totalDrivingDuration),
         totalChargingTimeMinutes: totalChargingTime,
+        totalChargingTimeSeconds: totalChargingTime * 60,
         totalDurationMinutes: Math.round(totalTripDuration / 60),
+        totalDurationSeconds: Math.round(totalTripDuration),
         totalCost,
       }
     };
