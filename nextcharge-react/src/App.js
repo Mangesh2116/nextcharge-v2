@@ -13,6 +13,7 @@ import ErrorBoundary from './ErrorBoundary';
 function HomePage() {
   const { searchStations, showToast } = useApp();
   const [apiStations, setApiStations] = useState([]);
+  const [nearbyStations, setNearbyStations] = useState([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -37,8 +38,12 @@ function HomePage() {
     <>
       <ErrorBoundary name="Hero"><Hero /></ErrorBoundary>
       <ErrorBoundary name="Stats Bar"><StatsBar /></ErrorBoundary>
-      <ErrorBoundary name="Map Section"><MapSection onSearch={handleSearch} apiStations={apiStations} /></ErrorBoundary>
-      <ErrorBoundary name="Stations Section"><StationsSection apiStations={apiStations} loading={loading} /></ErrorBoundary>
+      <ErrorBoundary name="Map Section">
+        <MapSection onSearch={handleSearch} apiStations={apiStations} onStationsChange={setNearbyStations} />
+      </ErrorBoundary>
+      <ErrorBoundary name="Stations Section">
+        <StationsSection apiStations={nearbyStations.length ? nearbyStations : apiStations} loading={loading} />
+      </ErrorBoundary>
       <ErrorBoundary name="How It Works"><HowItWorks /></ErrorBoundary>
       <ErrorBoundary name="Booking Section"><BookingSection /></ErrorBoundary>
       <ErrorBoundary name="News Section"><NewsSection /></ErrorBoundary>

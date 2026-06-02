@@ -4,6 +4,34 @@ import { useCountUp, useScrollReveal, useTiltCard } from './hooks';
 import { STATS, STATIONS, FILTER_TABS, CONNECTOR_TYPES, HOW_STEPS } from './data';
 import { MagneticButton, btnBase } from './Navbar';
 
+const DirectionsIcon = ({ size = 18 }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+    <rect x="3" y="3" width="18" height="18" rx="2" transform="rotate(45 12 12)" />
+    <path d="M9 15V11a2 2 0 0 1 2-2h3.5" />
+    <polyline points="12 6 15 9 12 12" />
+  </svg>
+);
+
+const LocateIcon = ({ size = 20 }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+    <circle cx="12" cy="12" r="10" />
+    <circle cx="12" cy="12" r="3" fill="currentColor" />
+    <line x1="12" y1="1" x2="12" y2="4" />
+    <line x1="12" y1="20" x2="12" y2="23" />
+    <line x1="1" y1="12" x2="4" y2="12" />
+    <line x1="20" y1="12" x2="23" y2="12" />
+  </svg>
+);
+
+const RefreshIcon = ({ size = 18 }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+    <path d="M23 4v6h-6" />
+    <path d="M1 20v-6h6" />
+    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+  </svg>
+);
+
+
 const inpStyle = { width:'100%', background:'var(--glass-bg)', border:'1px solid var(--input-border)', borderRadius:12, padding:'0.75rem 1rem', color:'var(--text)', fontFamily:'inherit', fontSize:'0.9rem', outline:'none', boxSizing:'border-box', transition:'border-color 0.2s, box-shadow 0.2s' };
 const secStyle = bg => ({ padding:'5rem 5%', background: bg || 'var(--bg)' });
 const tagStyle = { color:'var(--accent)', fontSize:'0.75rem', fontWeight:700, letterSpacing:'0.12em', textTransform:'uppercase', marginBottom:'0.8rem', textShadow: 'var(--tag-glow)' };
@@ -315,7 +343,7 @@ const getStopIcon = (index) => {
   };
 };
 
-export function MapSection({ onSearch, apiStations = [] }) {
+export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
   const { 
     setSelectedStation, 
     setBookingModal, 
@@ -367,6 +395,13 @@ export function MapSection({ onSearch, apiStations = [] }) {
     ...apiStations
   ], [osmStations, mapplsStations, apiStations]);
   const finalCandidates = baseStations;
+
+  useEffect(() => {
+    if (onStationsChange) {
+      onStationsChange(baseStations);
+    }
+  }, [baseStations, onStationsChange]);
+
   const [activePin, setActivePin] = useState(null);
 
   // Autocomplete debouncing hooks
@@ -887,7 +922,7 @@ export function MapSection({ onSearch, apiStations = [] }) {
               onClick={() => locateUser(true)}
               style={{
                 background: 'var(--surface)',
-                border: '1px solid var(--input-border)',
+                border: '1px solid var(--border)',
                 borderRadius: 12,
                 width: 42,
                 height: 42,
@@ -896,20 +931,30 @@ export function MapSection({ onSearch, apiStations = [] }) {
                 justifyContent: 'center',
                 boxShadow: 'var(--shadow-md)',
                 cursor: 'pointer',
-                fontSize: '1.25rem',
-                transition: 'all 0.2s',
+                color: 'var(--text)',
+                transition: 'all 0.2s ease-in-out',
                 outline: 'none'
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.transform = 'scale(1.06)';
+                e.currentTarget.style.color = '#1a73e8';
+                e.currentTarget.style.borderColor = 'rgba(26, 115, 232, 0.4)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.color = 'var(--text)';
+                e.currentTarget.style.borderColor = 'var(--border)';
               }}
               title="Locate Me"
             >
-              🎯
+              <LocateIcon size={20} />
             </button>
             <button 
               type="button"
               onClick={handleRefreshStations}
               style={{
                 background: 'var(--surface)',
-                border: '1px solid var(--input-border)',
+                border: '1px solid var(--border)',
                 borderRadius: 12,
                 width: 42,
                 height: 42,
@@ -918,14 +963,24 @@ export function MapSection({ onSearch, apiStations = [] }) {
                 justifyContent: 'center',
                 boxShadow: 'var(--shadow-md)',
                 cursor: 'pointer',
-                fontSize: '1.15rem',
-                transition: 'all 0.2s',
+                color: 'var(--text)',
+                transition: 'all 0.2s ease-in-out',
                 outline: 'none',
                 animation: (mapplsLoading || osmLoading) ? 'spin 1s linear infinite' : 'none'
               }}
+              onMouseEnter={e => {
+                e.currentTarget.style.transform = 'scale(1.06)';
+                e.currentTarget.style.color = '#1a73e8';
+                e.currentTarget.style.borderColor = 'rgba(26, 115, 232, 0.4)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.color = 'var(--text)';
+                e.currentTarget.style.borderColor = 'var(--border)';
+              }}
               title="Refresh Stations"
             >
-              🔄
+              <RefreshIcon size={18} />
             </button>
           </div>
 
@@ -1083,19 +1138,36 @@ export function MapSection({ onSearch, apiStations = [] }) {
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{
-                      ...btnBase('ghost', {
-                        flex: '0 0 auto',
-                        padding: '0.75rem 1rem',
-                        borderRadius: 12,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        textDecoration: 'none'
-                      })
+                      background: '#1a73e8',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: 12,
+                      padding: '0.75rem 1.25rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      textDecoration: 'none',
+                      fontWeight: 600,
+                      fontSize: '0.88rem',
+                      boxShadow: '0 2px 6px rgba(26, 115, 232, 0.3)',
+                      transition: 'all 0.2s ease-in-out',
+                      cursor: 'pointer'
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.background = '#1557b0';
+                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(26, 115, 232, 0.4)';
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.background = '#1a73e8';
+                      e.currentTarget.style.boxShadow = '0 2px 6px rgba(26, 115, 232, 0.3)';
+                      e.currentTarget.style.transform = 'translateY(0)';
                     }}
                     title="Get Directions"
                   >
-                    🗺️
+                    <DirectionsIcon size={18} />
+                    <span>Directions</span>
                   </a>
                   <button 
                     type="button"
@@ -1406,7 +1478,22 @@ function StationCard({ station, delay }) {
       </div>
       <div style={{ display:'flex', gap:'0.6rem' }}>
         <button onClick={handleBook} style={btnBase('primary',{flex:1,padding:'0.65rem',fontSize:'0.82rem'})}>Book Slot</button>
-        <button onClick={()=>station.lat&&window.open('https://www.google.com/maps/dir/?api=1&destination='+station.lat+','+station.lng,'_blank')} style={btnBase('ghost',{padding:'0.65rem 1rem',fontSize:'0.82rem'})}>Navigate</button>
+        <button 
+          onClick={() => station.lat && window.open('https://www.google.com/maps/dir/?api=1&destination=' + station.lat + ',' + station.lng, '_blank')} 
+          style={{
+            ...btnBase('ghost', {
+              padding: '0.65rem 1rem',
+              fontSize: '0.82rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px'
+            })
+          }}
+        >
+          <DirectionsIcon size={14} />
+          Navigate
+        </button>
       </div>
     </div>
   );
