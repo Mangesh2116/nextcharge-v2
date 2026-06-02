@@ -136,11 +136,20 @@ export function MapSection({ onSearch, apiStations = [] }) {
           }
         }
       },
-      () => {
+      (error) => {
         if (zoomIn) {
-          showToast('Enable location permissions to find nearby chargers', 'warning');
+          let msg = 'Enable location permissions to find nearby chargers';
+          if (error.code === 1) {
+            msg = 'Location permission denied. Please allow location access in your browser settings.';
+          } else if (error.code === 2) {
+            msg = 'Location unavailable. Please check if system/OS Location Services are enabled.';
+          } else if (error.code === 3) {
+            msg = 'Location request timed out. Please try again.';
+          }
+          showToast(msg, 'warning');
         }
-      }
+      },
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 }
     );
   };
 
