@@ -731,10 +731,10 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
         if (!bounds) return;
         const ne = bounds.getNorthEast();
         const diagMeters = getDistanceMeters(center.lat(), center.lng(), ne.lat(), ne.lng());
-        const radius = Math.min(Math.max(diagMeters, 2000), 40000);
+        const radius = Math.min(Math.max(diagMeters, 2000), 12000);
         loadMapplsStations(center.lat(), center.lng(), Math.round(radius));
         loadOSMStations(center.lat(), center.lng(), Math.round(radius));
-      }, 1200);
+      }, 300);
     };
 
     const idleListener = map.addListener('idle', onMoveEnd);
@@ -1504,6 +1504,7 @@ export function StationsSection({ apiStations, loading }) {
   const rev = useScrollReveal();
   const base = apiStations.length ? apiStations : STATIONS;
   const filtered = activeTab==='All' ? base : base.filter(s=>({'Fast DC':s=>s.connectors.some(c=>c.includes('CCS')||c.includes('CHAde')),'AC':s=>s.connectors.some(c=>c.includes('AC')||c.includes('Type 2')),'CCS2':s=>s.connectors.some(c=>c.includes('CCS2'))}[activeTab]?.(s)));
+  const displayedStations = filtered.slice(0, 10);
 
   return (
     <section id="stations" ref={rev.ref} className={`reveal ${rev.visible?'visible':''}`} style={secStyle('var(--bg)')}>
@@ -1519,7 +1520,7 @@ export function StationsSection({ apiStations, loading }) {
         </div>
       ) : (
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:'1.2rem' }}>
-          {filtered.map((s,i)=><StationCard key={s._id} station={s} delay={i} />)}
+          {displayedStations.map((s,i)=><StationCard key={s._id} station={s} delay={i} />)}
         </div>
       )}
     </section>

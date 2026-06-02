@@ -253,10 +253,12 @@ export function AppProvider({ children }) {
       query = `[out:json];node["amenity"="charging_station"](${s},${w},${n},${e});out;`;
     } else {
       return [];
-    }    const mirrors = [
+    }
+
+    const mirrors = [
+      'https://overpass-api.de/api/interpreter',
       'https://overpass.kumi.systems/api/interpreter',
-      'https://overpass.openstreetmap.ru/api/interpreter',
-      'https://overpass-api.de/api/interpreter'
+      'https://overpass.openstreetmap.ru/api/interpreter'
     ];
 
     let data = null;
