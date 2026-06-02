@@ -546,11 +546,12 @@ export function MapSection({ onSearch, apiStations = [] }) {
     const map = window.L.map(mapRef.current, {
       center: [19.0596, 72.8656],
       zoom: 11.5,
-      zoomControl: false
+      zoomControl: false,
+      attributionControl: false
     });
 
-    window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 20
+    window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
     }).addTo(map);
 
     window.L.control.zoom({ position: 'topleft' }).addTo(map);
