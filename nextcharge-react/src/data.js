@@ -30,7 +30,7 @@ export const API_BASE = process.env.REACT_APP_API_URL ? normalizeApiUrl(process.
 
 export async function apiCall(endpoint, opts = {}, token = null) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
+  const timeout = setTimeout(() => controller.abort(), opts.timeout || 15000);
   try {
     const headers = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = 'Bearer ' + token;

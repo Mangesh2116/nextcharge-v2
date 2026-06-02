@@ -228,7 +228,7 @@ export function AppProvider({ children }) {
   const searchAddressNominatim = useCallback(async (queryText) => {
     if (!queryText?.trim()) return [];
     try {
-      const r = await apiCall(`/google/search-address?query=${encodeURIComponent(queryText)}`);
+      const r = await apiCall(`/google/search-address?query=${encodeURIComponent(queryText)}`, { timeout: 10000 });
       if (!r.ok || !r.data?.data) return [];
       return r.data.data;
     } catch (err) {
@@ -363,6 +363,7 @@ export function AppProvider({ children }) {
     try {
       const r = await apiCall('/google/route', {
         method: 'POST',
+        timeout: 25000,
         body: {
           start: { lat: startLat, lng: startLng },
           destination: { lat: destLat, lng: destLng }

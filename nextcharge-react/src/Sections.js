@@ -150,7 +150,7 @@ function SoCGraph({ socProfile }) {
     <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 12, padding: '12px 8px 4px', border: '1px solid var(--border)', marginBottom: 14 }}>
       <div style={{ fontSize: '0.72rem', color: 'var(--muted)', fontWeight: 600, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
         <span>🔋 SoC Profile vs Distance</span>
-        <span style={{ color: 'var(--accent)' }}>ABRP Simulation</span>
+        <span style={{ color: 'var(--accent)' }}>NextCharge Simulation</span>
       </div>
       <canvas ref={canvasRef} style={{ width: '100%', height: 110, display: 'block' }} />
     </div>
@@ -549,6 +549,41 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
       },
       { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 }
     );
+  };
+
+  const handleUseCurrentLocation = () => {
+    if (userLoc) {
+      setStartPlace({
+        name: 'Current Location',
+        lat: userLoc.lat,
+        lng: userLoc.lng
+      });
+      setStartInput('Current Location');
+      showToast('Start set to current location', 'success');
+    } else {
+      if (!navigator.geolocation) {
+        showToast('Geolocation is not supported by your browser', 'error');
+        return;
+      }
+      showToast('Locating current position...', 'info');
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          setUserLoc({ lat: latitude, lng: longitude });
+          setStartPlace({
+            name: 'Current Location',
+            lat: latitude,
+            lng: longitude
+          });
+          setStartInput('Current Location');
+          showToast('Start set to current location', 'success');
+        },
+        () => {
+          showToast('Could not access location. Please type manually.', 'error');
+        },
+        { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 }
+      );
+    }
   };
 
   const renderMarkers = useCallback(() => {
@@ -1041,7 +1076,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
                 padding: '8px 0',
                 color: sidebarTab === 'explore' ? 'var(--text)' : 'var(--muted)',
                 fontWeight: 600,
-                fontSize: '0.82rem',
+                fontSize: '0.78rem',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
                 display: 'flex',
@@ -1050,19 +1085,23 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
                 gap: 6
               }}
             >
-              🔍 Explore Chargers
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              Explore Chargers
             </button>
             <button
               onClick={() => setSidebarTab('route')}
               style={{
-                flex: 1,
+                flex: 1.2,
                 background: sidebarTab === 'route' ? 'var(--surface)' : 'transparent',
                 border: 'none',
                 borderRadius: 8,
                 padding: '8px 0',
                 color: sidebarTab === 'route' ? 'var(--text)' : 'var(--muted)',
                 fontWeight: 600,
-                fontSize: '0.82rem',
+                fontSize: '0.78rem',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
                 display: 'flex',
@@ -1071,7 +1110,12 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
                 gap: 6
               }}
             >
-              🗺️ ABRP Route Planner
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="6" cy="6" r="3"></circle>
+                <circle cx="18" cy="18" r="3"></circle>
+                <path d="M9 6h6a3 3 0 0 1 3 3v6"></path>
+              </svg>
+              NextCharge Route Planner
             </button>
           </div>
 
@@ -1192,21 +1236,55 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
               
               {!routeData && (
                 <>
-                  <div style={{ fontSize: '1rem', fontWeight: 750, color: 'var(--text)', marginBottom: 4 }}>ABRP Route Planner</div>
+                  <div style={{ fontSize: '1rem', fontWeight: 750, color: 'var(--text)', marginBottom: 4 }}>NextCharge Route Planner</div>
                   <div style={{ fontSize: '0.78rem', color: 'var(--muted)', marginBottom: 8 }}>Input start, destination, and select your EV. We will map optimal charging stops.</div>
                   
                   {/* Start Location Input with Autocomplete */}
                   <div style={{ position: 'relative' }}>
                     <label style={{ fontSize: '0.72rem', color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: 4 }}>Start Location</label>
-                    <input
-                      value={startInput}
-                      onChange={e => {
-                        setStartInput(e.target.value);
-                        if (!e.target.value) setStartPlace(null);
-                      }}
-                      placeholder="Search starting point..."
-                      style={inpStyle}
-                    />
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        value={startInput}
+                        onChange={e => {
+                          setStartInput(e.target.value);
+                          if (!e.target.value) setStartPlace(null);
+                        }}
+                        placeholder="Search starting point..."
+                        style={{ ...inpStyle, paddingRight: '2.4rem' }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleUseCurrentLocation}
+                        style={{
+                          position: 'absolute',
+                          right: 10,
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--accent)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: 6,
+                          borderRadius: '50%',
+                          transition: 'all 0.2s ease',
+                          outline: 'none'
+                        }}
+                        onMouseEnter={e => {
+                          e.currentTarget.style.background = 'rgba(0, 255, 136, 0.15)';
+                          e.currentTarget.style.color = '#ffffff';
+                        }}
+                        onMouseLeave={e => {
+                          e.currentTarget.style.background = 'none';
+                          e.currentTarget.style.color = 'var(--accent)';
+                        }}
+                        title="Use current location"
+                      >
+                        <LocateIcon size={15} />
+                      </button>
+                    </div>
                     {startSuggestions.length > 0 && (
                       <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, zIndex: 1050, boxShadow: 'var(--shadow-lg)', maxHeight: 200, overflowY: 'auto', marginTop: 4 }}>
                         {startSuggestions.map((place, idx) => (
@@ -1333,8 +1411,21 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
                         fontWeight: 700,
                         marginTop: 6,
                         width: '100%',
-                        cursor: routeLoading ? 'not-allowed' : 'pointer'
+                        cursor: routeLoading ? 'not-allowed' : 'pointer',
+                        boxShadow: '0 4px 14px rgba(0, 255, 136, 0.3)',
+                        border: 'none',
+                        transition: 'all 0.25s ease'
                       })
+                    }}
+                    onMouseEnter={e => {
+                      if (!routeLoading) {
+                        e.currentTarget.style.transform = 'translateY(-1px)';
+                        e.currentTarget.style.boxShadow = '0 6px 20px rgba(0, 255, 136, 0.45)';
+                      }
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '0 4px 14px rgba(0, 255, 136, 0.3)';
                     }}
                   >
                     {routeLoading ? 'Simulating Route Stops...' : '⚡ Calculate EV Route'}

@@ -154,7 +154,7 @@ router.post('/route', async (req, res) => {
       }));
     }
 
-    const response = await fetch('https://routes.googleapis.com/v1/directions:computeRoutes', {
+    const response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
