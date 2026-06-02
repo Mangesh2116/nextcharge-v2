@@ -138,6 +138,183 @@ const EV_PRESETS = [
   { name: 'Custom EV', batteryCapacity: 40.0, consumption: 150 }
 ];
 
+// ─── Google Maps Styles ────────────────────────────────────────────────────────
+const darkMapStyle = [
+  { elementType: "geometry", stylers: [{ color: "#0B0F19" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#0B0F19" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#8E9AA8" }] },
+  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#00FF88" }] },
+  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#8E9AA8" }] },
+  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#101622" }] },
+  { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#546578" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#151C2C" }] },
+  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#1E293B" }] },
+  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#64748B" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#1E293B" }] },
+  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#334155" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#0F172A" }] },
+  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#475569" }] }
+];
+
+const lightMapStyle = [
+  { elementType: "geometry", stylers: [{ color: "#f5f5f5" }] },
+  { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#f5f5f5" }] },
+  { featureType: "administrative.land_parcel", elementType: "labels.text.fill", stylers: [{ color: "#bdbdbd" }] },
+  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
+  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#e5e5e5" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
+  { featureType: "road.arterial", elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#dadada" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#c9c9c9" }] }
+];
+
+// Haversine distance calculator
+function getDistanceMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371e3;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// ─── Custom Google Maps Blue Dot Geolocation Marker ──────────────────────────
+const getUserLocIcon = () => {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="38" height="38" viewBox="0 0 38 38">
+      <!-- Radar Waves -->
+      <circle cx="19" cy="19" r="16" fill="none" stroke="#3B82F6" stroke-width="1.5" opacity="0.15" />
+      <circle cx="19" cy="19" r="11" fill="none" stroke="#3B82F6" stroke-width="1.5" opacity="0.3" />
+      
+      <!-- Outer Beacon Glow -->
+      <circle cx="19" cy="19" r="18" fill="rgba(59,130,246,0.12)" />
+      <circle cx="19" cy="19" r="13" fill="rgba(59,130,246,0.22)" />
+      
+      <!-- Blue Orb Drop Shadow -->
+      <circle cx="19" cy="20" r="7" fill="rgba(10,14,23,0.3)" />
+      
+      <!-- Core Navigation Beacon -->
+      <circle cx="19" cy="19" r="7" fill="url(#blueDotGrad)" stroke="#ffffff" stroke-width="2" />
+      
+      <defs>
+        <radialGradient id="blueDotGrad" cx="35%" cy="35%" r="65%">
+          <stop offset="0%" stop-color="#60A5FA" />
+          <stop offset="70%" stop-color="#2563EB" />
+          <stop offset="100%" stop-color="#1D4ED8" />
+        </radialGradient>
+      </defs>
+    </svg>
+  `;
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+    size: new window.google.maps.Size(38, 38),
+    anchor: new window.google.maps.Point(19, 19)
+  };
+};
+
+// ─── Custom Markers SVG Icons ──────────────────────────────────────────────────
+const getMarkerIcon = (status, isActive) => {
+  const color = status === 'available' ? '#10B981' : status === 'busy' ? '#F59E0B' : '#EF4444';
+  const bg = isActive ? '#ffffff' : '#151C2C';
+  const strokeColor = color;
+  const boltColor = isActive ? color : '#ffffff';
+  
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="42" viewBox="0 0 36 42">
+      <!-- Pin Drop Shadow -->
+      <path d="M18,40 C18,40 34,29.5 34,18 C34,8.5 27.5,2 18,2 C8.5,2 2,8.5 2,18 C2,29.5 18,40 18,40 Z" fill="rgba(10,14,23,0.25)" transform="translate(0, 2)" />
+      <!-- Pin Body -->
+      <path d="M18,2 C27.5,2 34,8.5 34,18 C34,29.5 18,40 18,40 C18,40 2,29.5 2,18 C2,8.5 8.5,2 18,2 Z" fill="${bg}" stroke="${strokeColor}" stroke-width="2.5" />
+      <!-- White Ring around bolt (only on active pins) -->
+      ${isActive ? `<circle cx="18" cy="17" r="9" fill="${bg}" />` : ''}
+      <!-- Lightning Bolt Path (Sharp & Clean) -->
+      <path d="M18,8 L12,19 H17 L15,30 L24,16 H19 Z" fill="${boltColor}" />
+    </svg>
+  `;
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+    size: new window.google.maps.Size(36, 42),
+    anchor: new window.google.maps.Point(18, 40)
+  };
+};
+
+const getStartIcon = () => {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="42" viewBox="0 0 36 42">
+      <!-- Pin Drop Shadow -->
+      <path d="M18,40 C18,40 34,29.5 34,18 C34,8.5 27.5,2 18,2 C8.5,2 2,8.5 2,18 C2,29.5 18,40 18,40 Z" fill="rgba(10,14,23,0.3)" transform="translate(0, 2)" />
+      <!-- Pin Body (Green) -->
+      <path d="M18,2 C27.5,2 34,8.5 34,18 C34,29.5 18,40 18,40 C18,40 2,29.5 2,18 C2,8.5 8.5,2 18,2 Z" fill="#10B981" stroke="#ffffff" stroke-width="2.5" />
+      <!-- Inner White Plate -->
+      <circle cx="18" cy="17" r="8" fill="#ffffff" />
+      <!-- Green Navigation Arrow -->
+      <path d="M18,11 L22.5,21 L18,19.5 L13.5,21 Z" fill="#10B981" />
+    </svg>
+  `;
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+    size: new window.google.maps.Size(36, 42),
+    anchor: new window.google.maps.Point(18, 40)
+  };
+};
+
+const getDestIcon = () => {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="42" viewBox="0 0 36 42">
+      <!-- Pin Drop Shadow -->
+      <path d="M18,40 C18,40 34,29.5 34,18 C34,8.5 27.5,2 18,2 C8.5,2 2,8.5 2,18 C2,29.5 18,40 18,40 Z" fill="rgba(10,14,23,0.3)" transform="translate(0, 2)" />
+      <!-- Pin Body (Red) -->
+      <path d="M18,2 C27.5,2 34,8.5 34,18 C34,29.5 18,40 18,40 C18,40 2,29.5 2,18 C2,8.5 8.5,2 18,2 Z" fill="#EF4444" stroke="#ffffff" stroke-width="2.5" />
+      <!-- Inner White Plate -->
+      <circle cx="18" cy="17" r="8" fill="#ffffff" />
+      <!-- Checkered Flag Icon -->
+      <!-- Flagpole -->
+      <line x1="14" y1="11" x2="14" y2="23" stroke="#334155" stroke-width="1.5" stroke-linecap="round" />
+      <!-- Flag Cloth -->
+      <rect x="14" y="11" width="3" height="3" fill="#000000" />
+      <rect x="17" y="11" width="3" height="3" fill="#ffffff" />
+      <rect x="20" y="11" width="3" height="3" fill="#000000" />
+      <rect x="14" y="14" width="3" height="3" fill="#ffffff" />
+      <rect x="17" y="14" width="3" height="3" fill="#000000" />
+      <rect x="20" y="14" width="3" height="3" fill="#ffffff" />
+      <!-- Border around flag cloth -->
+      <rect x="14" y="11" width="9" height="6" fill="none" stroke="#334155" stroke-width="0.5" />
+    </svg>
+  `;
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+    size: new window.google.maps.Size(36, 42),
+    anchor: new window.google.maps.Point(18, 40)
+  };
+};
+
+const getStopIcon = (index) => {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="46" viewBox="0 0 40 46">
+      <!-- Pin Drop Shadow -->
+      <path d="M20,44 C20,44 37,32 37,19 C37,8.5 30,2 20,2 C10,2 3,8.5 3,19 C3,32 20,44 20,44 Z" fill="rgba(10,14,23,0.3)" transform="translate(0, 2)" />
+      <!-- Pin Body (Blue) -->
+      <path d="M20,2 C30,2 37,9 37,19 C37,31 20,44 20,44 C20,44 3,31 3,19 C3,9 10,2 20,2 Z" fill="#3B82F6" stroke="#ffffff" stroke-width="2.5" />
+      <!-- Inner White Plate -->
+      <circle cx="20" cy="18" r="9" fill="#ffffff" />
+      <!-- Blue Lightning Bolt -->
+      <path d="M20,9 L14,19 H19 L17,27 L25,16 H20 Z" fill="#3B82F6" />
+      <!-- Stop Number Badge (Red) -->
+      <circle cx="31" cy="9" r="8.5" fill="#EF4444" stroke="#ffffff" stroke-width="1.5" />
+      <text x="31" y="12" font-family="'Inter', -apple-system, sans-serif" font-size="9" font-weight="900" fill="#ffffff" text-anchor="middle">${index + 1}</text>
+    </svg>
+  `;
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+    size: new window.google.maps.Size(40, 46),
+    anchor: new window.google.maps.Point(20, 44)
+  };
+};
+
 export function MapSection({ onSearch, apiStations = [] }) {
   const { 
     setSelectedStation, 
@@ -148,7 +325,8 @@ export function MapSection({ onSearch, apiStations = [] }) {
     fetchNearbyStations,
     searchAddressNominatim,
     fetchOSMChargingStations,
-    planEVRoute
+    planEVRoute,
+    theme
   } = useApp();
 
   // Core Exploration States
@@ -235,10 +413,11 @@ export function MapSection({ onSearch, apiStations = [] }) {
 
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
-  const markersGroupRef = useRef(null);
+  const markersGroupRef = useRef([]);
   const userLocMarkerRef = useRef(null);
   const routePolylineRef = useRef(null);
   const fetchTimeoutRef = useRef(null);
+  const clustererRef = useRef(null);
 
   const handleBook = () => {
     if (!user) { setAuthModal('login'); return; }
@@ -275,13 +454,13 @@ export function MapSection({ onSearch, apiStations = [] }) {
   }, [fetchOSMChargingStations]);
 
   useEffect(() => {
-    const checkL = setInterval(() => {
-      if (window.L) {
+    const checkGoogle = setInterval(() => {
+      if (window.google && window.google.maps) {
         setMapLoaded(true);
-        clearInterval(checkL);
+        clearInterval(checkGoogle);
       }
     }, 100);
-    return () => clearInterval(checkL);
+    return () => clearInterval(checkGoogle);
   }, []);
 
   const locateUser = (zoomIn = true) => {
@@ -298,32 +477,21 @@ export function MapSection({ onSearch, apiStations = [] }) {
         loadOSMStations(latitude, longitude, 10000);
 
         if (mapInstanceRef.current) {
+          const latLng = new window.google.maps.LatLng(latitude, longitude);
           if (zoomIn) {
-            mapInstanceRef.current.setView([latitude, longitude], 14, { animate: true });
+            mapInstanceRef.current.setZoom(14);
+            mapInstanceRef.current.panTo(latLng);
           }
 
           if (userLocMarkerRef.current) {
-            userLocMarkerRef.current.setLatLng([latitude, longitude]);
+            userLocMarkerRef.current.setPosition(latLng);
           } else {
-            const userIcon = window.L.divIcon({
-              html: `
-                <div style="position: relative; width: 24px; height: 24px;">
-                  <div style="position: absolute; inset: 0; background: #3B82F6; border: 3px solid #ffffff; border-radius: 50%; box-shadow: 0 0 10px rgba(59,130,246,0.6); z-index: 2;"></div>
-                  <div style="position: absolute; inset: -6px; background: rgba(59,130,246,0.3); border-radius: 50%; animation: pulse-blue 2s infinite; z-index: 1;"></div>
-                </div>
-                <style>
-                  @keyframes pulse-blue {
-                    0% { transform: scale(0.9); opacity: 0.8; }
-                    70% { transform: scale(1.6); opacity: 0; }
-                    100% { transform: scale(0.9); opacity: 0; }
-                  }
-                </style>
-              `,
-              className: 'user-loc-marker',
-              iconSize: [24, 24],
-              iconAnchor: [12, 12]
+            userLocMarkerRef.current = new window.google.maps.Marker({
+              position: latLng,
+              map: mapInstanceRef.current,
+              icon: getUserLocIcon(),
+              title: 'Your Location'
             });
-            userLocMarkerRef.current = window.L.marker([latitude, longitude], { icon: userIcon }).addTo(mapInstanceRef.current);
           }
 
           if (zoomIn) {
@@ -348,133 +516,62 @@ export function MapSection({ onSearch, apiStations = [] }) {
     );
   };
 
-  const createCustomMarker = (station, isActive) => {
-    const color = station.status === 'available' ? '#10B981' : station.status === 'busy' ? '#F59E0B' : '#EF4444';
-    const glow = station.status === 'available' ? 'rgba(16,185,129,0.3)' : station.status === 'busy' ? 'rgba(245,158,11,0.3)' : 'rgba(239,68,68,0.3)';
-
-    return window.L.divIcon({
-      html: `
-        <div style="
-          width: 36px;
-          height: 36px;
-          background: ${isActive ? '#ffffff' : 'var(--surface)'};
-          border: 2.5px solid ${color};
-          border-radius: 50% 50% 50% 0;
-          transform: rotate(-45deg) scale(${isActive ? 1.15 : 1});
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: 0 4px 14px ${glow};
-          transition: all 0.2s ease;
-        ">
-          <div style="transform: rotate(45deg); font-size: 13px; margin-left: 2px; margin-bottom: 2px;">⚡</div>
-        </div>
-      `,
-      className: 'custom-leaflet-marker',
-      iconSize: [36, 36],
-      iconAnchor: [18, 36]
-    });
-  };
-
   const renderMarkers = useCallback(() => {
-    if (!mapInstanceRef.current || !markersGroupRef.current || !window.L) return;
+    if (!mapInstanceRef.current || !mapLoaded) return;
 
-    markersGroupRef.current.clearLayers();
+    // Clear existing markers and clusterer
+    if (markersGroupRef.current && markersGroupRef.current.length > 0) {
+      markersGroupRef.current.forEach(m => m.setMap(null));
+    }
+    markersGroupRef.current = [];
+
+    if (clustererRef.current) {
+      clustererRef.current.clearMarkers();
+      clustererRef.current = null;
+    }
 
     if (sidebarTab === 'route' && routeData) {
-      const startIcon = window.L.divIcon({
-        html: `
-          <div style="
-            width: 32px;
-            height: 32px;
-            background: #10B981;
-            border: 2.5px solid #ffffff;
-            border-radius: 50% 50% 50% 0;
-            transform: rotate(-45deg);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 4px 10px rgba(16,185,129,0.4);
-          ">
-            <div style="transform: rotate(45deg); font-size: 10px; font-weight: 800; color: #ffffff;">S</div>
-          </div>
-        `,
-        className: 'route-start-marker',
-        iconSize: [32, 32],
-        iconAnchor: [16, 32]
+      // Start Marker
+      const startMarker = new window.google.maps.Marker({
+        position: { lat: routeData.start.lat, lng: routeData.start.lng },
+        map: mapInstanceRef.current,
+        icon: getStartIcon(),
+        title: 'Start Position'
       });
-      window.L.marker([routeData.start.lat, routeData.start.lng], { icon: startIcon })
-        .bindPopup(`<strong>Start Position</strong><br/>${routeData.start.name}`)
-        .addTo(markersGroupRef.current);
-
-      const destIcon = window.L.divIcon({
-        html: `
-          <div style="
-            width: 32px;
-            height: 32px;
-            background: #EF4444;
-            border: 2.5px solid #ffffff;
-            border-radius: 50% 50% 50% 0;
-            transform: rotate(-45deg);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 4px 10px rgba(239,68,68,0.4);
-          ">
-            <div style="transform: rotate(45deg); font-size: 10px; font-weight: 800; color: #ffffff;">🏁</div>
-          </div>
-        `,
-        className: 'route-dest-marker',
-        iconSize: [32, 32],
-        iconAnchor: [16, 32]
+      const startInfoWindow = new window.google.maps.InfoWindow({
+        content: `<div style="color: #0F172A;"><strong>Start Position</strong><br/>${routeData.start.name}</div>`
       });
-      window.L.marker([routeData.destination.lat, routeData.destination.lng], { icon: destIcon })
-        .bindPopup(`<strong>Destination</strong><br/>${routeData.destination.name}`)
-        .addTo(markersGroupRef.current);
+      startMarker.addListener('click', () => {
+        startInfoWindow.open(mapInstanceRef.current, startMarker);
+      });
+      markersGroupRef.current.push(startMarker);
 
+      // Destination Marker
+      const destMarker = new window.google.maps.Marker({
+        position: { lat: routeData.destination.lat, lng: routeData.destination.lng },
+        map: mapInstanceRef.current,
+        icon: getDestIcon(),
+        title: 'Destination'
+      });
+      const destInfoWindow = new window.google.maps.InfoWindow({
+        content: `<div style="color: #0F172A;"><strong>Destination</strong><br/>${routeData.destination.name}</div>`
+      });
+      destMarker.addListener('click', () => {
+        destInfoWindow.open(mapInstanceRef.current, destMarker);
+      });
+      markersGroupRef.current.push(destMarker);
+
+      // Stops Markers
       routeData.stops.forEach((stop, index) => {
-        const stopIcon = window.L.divIcon({
-          html: `
-            <div style="position: relative; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;">
-              <div style="position: absolute; inset: -3px; background: rgba(59,130,246,0.25); border-radius: 50%; animation: pulse-blue 2s infinite;"></div>
-              <div style="
-                width: 30px;
-                height: 30px;
-                background: #3B82F6;
-                border: 2px solid #ffffff;
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                box-shadow: 0 3px 8px rgba(59,130,246,0.5);
-                z-index: 2;
-              ">
-                <div style="font-size: 11px; color: white; font-weight: bold;">⚡</div>
-              </div>
-              <div style="
-                position: absolute;
-                top: -5px;
-                right: -5px;
-                background: #F43F5E;
-                color: white;
-                font-size: 8px;
-                font-weight: 800;
-                border-radius: 8px;
-                padding: 1px 4px;
-                border: 1.2px solid white;
-                z-index: 3;
-              ">
-                ${index + 1}
-              </div>
-            </div>
-          `,
-          className: 'route-stop-marker',
-          iconSize: [36, 36],
-          iconAnchor: [18, 18]
+        const stopMarker = new window.google.maps.Marker({
+          position: { lat: stop.lat, lng: stop.lng },
+          map: mapInstanceRef.current,
+          icon: getStopIcon(index),
+          title: `Stop #${index + 1}: ${stop.name}`
         });
 
         const popupContent = `
-          <div style="font-family: 'Inter', sans-serif; padding: 4px; min-width: 170px;">
+          <div style="font-family: 'Inter', sans-serif; padding: 4px; min-width: 170px; color: #0F172A;">
             <strong style="color: #3B82F6; font-size: 0.82rem;">⚡ Stop #${index + 1}: ${stop.name}</strong>
             <div style="font-size: 0.7rem; color: #64748B; margin-top: 3px;">📍 ${stop.address}</div>
             <hr style="border: none; border-top: 1px solid #E2E8F0; margin: 5px 0;" />
@@ -493,13 +590,18 @@ export function MapSection({ onSearch, apiStations = [] }) {
           </div>
         `;
 
-        window.L.marker([stop.lat, stop.lng], { icon: stopIcon })
-          .bindPopup(popupContent, { closeButton: false })
-          .on('click', () => {
-            setActivePin(stop);
-          })
-          .addTo(markersGroupRef.current);
+        const infoWindow = new window.google.maps.InfoWindow({
+          content: popupContent
+        });
+
+        stopMarker.addListener('click', () => {
+          infoWindow.open(mapInstanceRef.current, stopMarker);
+          setActivePin(stop);
+        });
+
+        markersGroupRef.current.push(stopMarker);
       });
+
     } else {
       const filtered = finalCandidates.filter(s => {
         if (filter === 'Available Only') return s.status === 'available';
@@ -509,11 +611,15 @@ export function MapSection({ onSearch, apiStations = [] }) {
 
       filtered.forEach(s => {
         const active = activePin && activePin._id === s._id;
-        const markerIcon = createCustomMarker(s, active);
-        const marker = window.L.marker([s.lat, s.lng], { icon: markerIcon });
+        const marker = new window.google.maps.Marker({
+          position: { lat: s.lat, lng: s.lng },
+          map: mapInstanceRef.current,
+          icon: getMarkerIcon(s.status, active),
+          title: s.name
+        });
 
         const popupContent = `
-          <div style="font-family: 'Inter', sans-serif; padding: 4px; min-width: 180px;">
+          <div style="font-family: 'Inter', sans-serif; padding: 4px; min-width: 180px; color: #0F172A;">
             <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
               <span style="font-size: 14px;">${s.icon || '⚡'}</span>
               <strong style="color: #0F172A; font-size: 0.88rem;">${s.name}</strong>
@@ -527,41 +633,52 @@ export function MapSection({ onSearch, apiStations = [] }) {
                 ⚡ ${s.maxSpeed || '50 kW'}
               </span>
             </div>
-            ${s._source === 'osm' ? '<div style="font-size: 0.60rem; color: #94A3B8; margin-top: 4px; font-weight: 500;">Source: OpenStreetMap Data</div>' : ''}
+            <div style="font-size: 0.60rem; color: #94A3B8; margin-top: 4px; font-weight: 500;">Source: ${s._source === 'mappls' ? 'Mappls' : 'NextCharge'} Network</div>
           </div>
         `;
 
-        marker.bindPopup(popupContent, { closeButton: false });
-
-        marker.on('click', () => {
-          setActivePin(s);
-          mapInstanceRef.current.setView([s.lat, s.lng], 13.5, { animate: true });
+        const infoWindow = new window.google.maps.InfoWindow({
+          content: popupContent
         });
 
-        marker.addTo(markersGroupRef.current);
+        marker.addListener('click', () => {
+          infoWindow.open(mapInstanceRef.current, marker);
+          setActivePin(s);
+          mapInstanceRef.current.panTo({ lat: s.lat, lng: s.lng });
+        });
+
+        markersGroupRef.current.push(marker);
       });
+
+      // Clustering normal pins
+      if (window.markerClusterer && markersGroupRef.current.length > 0) {
+        clustererRef.current = new window.markerClusterer.MarkerClusterer({
+          map: mapInstanceRef.current,
+          markers: markersGroupRef.current
+        });
+      }
     }
-  }, [filter, activePin, finalCandidates, sidebarTab, routeData]);
+  }, [filter, activePin, finalCandidates, sidebarTab, routeData, mapLoaded]);
 
   // Map Initialization Effect
   useEffect(() => {
     if (!mapLoaded || !mapRef.current || mapInstanceRef.current) return;
 
-    const map = window.L.map(mapRef.current, {
-      center: [19.0596, 72.8656],
+    const map = new window.google.maps.Map(mapRef.current, {
+      center: { lat: 19.0596, lng: 72.8656 },
       zoom: 11.5,
-      zoomControl: false,
-      attributionControl: false
+      zoomControl: true,
+      zoomControlOptions: {
+        position: window.google.maps.ControlPosition.LEFT_TOP
+      },
+      mapTypeControl: false,
+      scaleControl: false,
+      streetViewControl: false,
+      rotateControl: false,
+      fullscreenControl: false,
+      styles: theme === 'light' ? lightMapStyle : darkMapStyle
     });
 
-    window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19
-    }).addTo(map);
-
-    window.L.control.zoom({ position: 'topleft' }).addTo(map);
-
-    const markersGroup = window.L.layerGroup().addTo(map);
-    markersGroupRef.current = markersGroup;
     mapInstanceRef.current = map;
 
     renderMarkers();
@@ -571,28 +688,34 @@ export function MapSection({ onSearch, apiStations = [] }) {
     locateUser(false);
 
     const onMoveEnd = () => {
-      if (sidebarTab === 'route' && routeData) return; // avoid fetching during route overview
+      if (sidebarTab === 'route' && routeData) return;
       clearTimeout(fetchTimeoutRef.current);
       fetchTimeoutRef.current = setTimeout(() => {
         const center = map.getCenter();
         const bounds = map.getBounds();
+        if (!bounds) return;
         const ne = bounds.getNorthEast();
-        const sw = bounds.getSouthWest();
-        const diagMeters = map.distance(ne, sw) / 2;
+        const diagMeters = getDistanceMeters(center.lat(), center.lng(), ne.lat(), ne.lng());
         const radius = Math.min(Math.max(diagMeters, 2000), 40000);
-        loadMapplsStations(center.lat, center.lng, Math.round(radius));
-        loadOSMStations(center.lat, center.lng, Math.round(radius));
+        loadMapplsStations(center.lat(), center.lng(), Math.round(radius));
+        loadOSMStations(center.lat(), center.lng(), Math.round(radius));
       }, 1200);
     };
-    map.on('moveend', onMoveEnd);
+
+    const idleListener = map.addListener('idle', onMoveEnd);
 
     return () => {
-      map.off('moveend', onMoveEnd);
+      window.google.maps.event.removeListener(idleListener);
       clearTimeout(fetchTimeoutRef.current);
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
+      if (userLocMarkerRef.current) {
+        userLocMarkerRef.current.setMap(null);
+        userLocMarkerRef.current = null;
       }
+      if (clustererRef.current) {
+        clustererRef.current.clearMarkers();
+        clustererRef.current = null;
+      }
+      mapInstanceRef.current = null;
     };
   }, [mapLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -601,30 +724,44 @@ export function MapSection({ onSearch, apiStations = [] }) {
     if (!mapInstanceRef.current) return;
 
     if (routePolylineRef.current) {
-      mapInstanceRef.current.removeLayer(routePolylineRef.current);
+      routePolylineRef.current.setMap(null);
       routePolylineRef.current = null;
     }
 
     if (sidebarTab === 'route' && routeData && routeData.routeGeometry) {
-      const leafletCoords = routeData.routeGeometry.coordinates.map(([lng, lat]) => [lat, lng]);
-      
-      routePolylineRef.current = window.L.polyline(leafletCoords, {
-        color: '#00FF88',
-        weight: 6.5,
-        opacity: 0.85,
-        lineCap: 'round',
-        lineJoin: 'round'
-      }).addTo(mapInstanceRef.current);
+      const googleCoords = routeData.routeGeometry.coordinates.map(([lng, lat]) => ({
+        lat: lat,
+        lng: lng
+      }));
 
-      mapInstanceRef.current.fitBounds(routePolylineRef.current.getBounds(), { padding: [50, 50] });
+      routePolylineRef.current = new window.google.maps.Polyline({
+        path: googleCoords,
+        geodesic: true,
+        strokeColor: theme === 'light' ? '#10B981' : '#00FF88',
+        strokeOpacity: 0.85,
+        strokeWeight: 6.5,
+        map: mapInstanceRef.current
+      });
+
+      const bounds = new window.google.maps.LatLngBounds();
+      googleCoords.forEach(c => bounds.extend(c));
+      mapInstanceRef.current.fitBounds(bounds, { top: 50, bottom: 50, left: 50, right: 50 });
     }
-  }, [routeData, sidebarTab]);
+  }, [routeData, sidebarTab, theme]);
 
   useEffect(() => {
     if (mapInstanceRef.current) {
       renderMarkers();
     }
   }, [filter, activePin, finalCandidates, sidebarTab, routeData, renderMarkers]);
+
+  useEffect(() => {
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.setOptions({
+        styles: theme === 'light' ? lightMapStyle : darkMapStyle
+      });
+    }
+  }, [theme]);
 
   const handleSearchLocation = async (queryText) => {
     if (!queryText.trim()) return;
@@ -638,8 +775,9 @@ export function MapSection({ onSearch, apiStations = [] }) {
         const targetLng = parseFloat(lon);
 
         if (mapInstanceRef.current) {
-          mapInstanceRef.current.setView([targetLat, targetLng], 12.5, { animate: true });
-        }
+        mapInstanceRef.current.setZoom(12.5);
+        mapInstanceRef.current.panTo({ lat: targetLat, lng: targetLng });
+      }
 
         await loadMapplsStations(targetLat, targetLng, 10000);
         await loadOSMStations(targetLat, targetLng, 10000);
@@ -663,8 +801,10 @@ export function MapSection({ onSearch, apiStations = [] }) {
   const handleRefreshStations = () => {
     if (!mapInstanceRef.current) return;
     const center = mapInstanceRef.current.getCenter();
-    loadMapplsStations(center.lat, center.lng, 10000);
-    loadOSMStations(center.lat, center.lng, 10000);
+    const lat = center.lat();
+    const lng = center.lng();
+    loadMapplsStations(lat, lng, 10000);
+    loadOSMStations(lat, lng, 10000);
     showToast('Refreshing nearby chargers...', 'info');
   };
 
@@ -711,7 +851,8 @@ export function MapSection({ onSearch, apiStations = [] }) {
     setDestInput('');
     setRoutingError('');
     if (mapInstanceRef.current && userLoc) {
-      mapInstanceRef.current.setView([userLoc.lat, userLoc.lng], 11.5);
+      mapInstanceRef.current.setZoom(11.5);
+      mapInstanceRef.current.panTo({ lat: userLoc.lat, lng: userLoc.lng });
     }
   };
 
@@ -798,7 +939,7 @@ export function MapSection({ onSearch, apiStations = [] }) {
 
           {/* Powered by OpenStreetMap / Mappls badge */}
           <div style={{ position: 'absolute', bottom: 12, right: 12, zIndex: 1000, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(10px)', padding: '4px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)', fontSize: '0.65rem', color: 'rgba(255,255,255,0.6)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4 }}>
-            🌍 OpenStreetMap Data Integrated · {finalCandidates.length} Active Stations
+            ⚡ NextCharge Live Network · {finalCandidates.length} Active Stations
           </div>
 
           {/* Floating EV Filters */}
@@ -918,7 +1059,7 @@ export function MapSection({ onSearch, apiStations = [] }) {
                     </div>
                     <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px', textAlign: 'left' }}>
                       <div style={{ fontSize: '0.72rem', color: 'var(--muted)', marginBottom: 2 }}>Source</div>
-                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase' }}>{activePin._source || 'DB'}</div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase' }}>{activePin._source === 'osm' || activePin._source === 'nextcharge' ? 'NEXTCHARGE' : activePin._source || 'DB'}</div>
                     </div>
                   </div>
 
@@ -1209,7 +1350,8 @@ export function MapSection({ onSearch, apiStations = [] }) {
                             <button
                               onClick={() => {
                                 if (mapInstanceRef.current) {
-                                  mapInstanceRef.current.setView([stop.lat, stop.lng], 14, { animate: true });
+                                  mapInstanceRef.current.setZoom(14);
+                                  mapInstanceRef.current.panTo({ lat: stop.lat, lng: stop.lng });
                                   setActivePin(stop);
                                 }
                               }}

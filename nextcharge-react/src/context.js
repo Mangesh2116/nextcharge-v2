@@ -166,10 +166,9 @@ export function AppProvider({ children }) {
     return true;
   }, [token]);
 
-  // ─── Mappls Nearby Stations ─────────────────────────────────────────────────
   const fetchNearbyStations = useCallback(async (lat, lng, radius = 5000) => {
     try {
-      const ep = `/mappls/nearby?lat=${lat}&lng=${lng}&radius=${radius}`;
+      const ep = `/google/nearby?lat=${lat}&lng=${lng}&radius=${radius}`;
       const r = await apiCall(ep);
       if (!r.ok || !r.data?.data) return [];
 
@@ -229,14 +228,9 @@ export function AppProvider({ children }) {
   const searchAddressNominatim = useCallback(async (queryText) => {
     if (!queryText?.trim()) return [];
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(queryText)}&limit=5`);
-      if (!res.ok) throw new Error(`Nominatim geocoding error: ${res.status}`);
-      const data = await res.json();
-      return data.map(item => ({
-        name: item.display_name,
-        lat: parseFloat(item.lat),
-        lng: parseFloat(item.lon),
-      }));
+      const r = await apiCall(`/google/search-address?query=${encodeURIComponent(queryText)}`);
+      if (!r.ok || !r.data?.data) return [];
+      return r.data.data;
     } catch (err) {
       console.error('searchAddressNominatim error:', err);
       return [];
@@ -336,7 +330,7 @@ export function AppProvider({ children }) {
 
           const street = tags['addr:street'] || '';
           const city = tags['addr:city'] || '';
-          const fullAddr = [street, city].filter(Boolean).join(', ') || tags['addr:full'] || 'OpenStreetMap Location';
+          const fullAddr = [street, city].filter(Boolean).join(', ') || tags['addr:full'] || 'Charging Station Location';
 
           stations.push({
             _id: `osm_node_${el.id}`,
@@ -351,7 +345,7 @@ export function AppProvider({ children }) {
             status: status === 'charging' ? 'busy' : status,
             lat: el.lat,
             lng: el.lon,
-            _source: 'osm'
+            _source: 'nextcharge'
           });
         }
       });
@@ -365,15 +359,18 @@ export function AppProvider({ children }) {
   // ─── OpenStreetMap / OSRM Router ──────────────────────────────────────────
   const fetchOSMRoute = useCallback(async (startLng, startLat, destLng, destLat) => {
     try {
-      const url = `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${destLng},${destLat}?overview=full&geometries=geojson`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`OSRM routing error: ${res.status}`);
-      const data = await res.json();
-      if (!data.routes || data.routes.length === 0) return null;
+      const r = await apiCall('/google/route', {
+        method: 'POST',
+        body: {
+          start: { lat: startLat, lng: startLng },
+          destination: { lat: destLat, lng: destLng }
+        }
+      });
+      if (!r.ok || !r.data?.data) return null;
       return {
-        geometry: data.routes[0].geometry,
-        distance: data.routes[0].distance,
-        duration: data.routes[0].duration,
+        geometry: r.data.data.geometry,
+        distance: r.data.data.distance,
+        duration: r.data.data.duration,
       };
     } catch (err) {
       console.error('fetchOSMRoute error:', err);
