@@ -97,7 +97,7 @@ export default function Navbar() {
             { label: 'Our Mission', action: () => scrollTo('how') },
             { label: 'Team & Careers', action: () => showToast('Team & Careers portal launching soon.', 'info') },
             { label: 'Press & Media', action: () => showToast('Press & Media room launching soon.', 'info') },
-            { label: 'Contact Us', action: () => showToast('Support line: Launching Soon! Email: support@nextcharge.in', 'info') },
+            { label: 'Contact Us', action: () => showToast('Support lines: +91 8208746187 / +91 7507902116. Email: nextcharge.india@gmail.com', 'info') },
           ]} />
           <NavLink onClick={() => navigate('/news')} label="Resources" isTouch={isTouch} />
         </ul>
