@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const BlockedStation = require('../models/BlockedStation');
 
 const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '';
 const GOOGLE_ROUTES_API_KEY = process.env.GOOGLE_ROUTES_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '';
@@ -91,23 +92,29 @@ router.get('/nearby', async (req, res) => {
     const data = await response.json();
     const places = data.places || [];
 
-    const stations = places.map((place, index) => {
-      const pLat = place.location?.latitude || 0;
-      const pLng = place.location?.longitude || 0;
-      const distance = getDistanceMeters(parseFloat(lat), parseFloat(lng), pLat, pLng);
+    // Retrieve blocked station IDs
+    const blockedIds = await BlockedStation.find().distinct('stationId');
+    const blockedSet = new Set(blockedIds.map(id => String(id)));
 
-      return {
-        eLoc: place.id,
-        placeName: place.displayName?.text || 'EV Charging Station',
-        placeAddress: place.formattedAddress || '',
-        latitude: pLat,
-        longitude: pLng,
-        distance,
-        type: 'electric_vehicle_charging_station',
-        keywords: '',
-        orderIndex: index
-      };
-    });
+    const stations = places
+      .map((place, index) => {
+        const pLat = place.location?.latitude || 0;
+        const pLng = place.location?.longitude || 0;
+        const distance = getDistanceMeters(parseFloat(lat), parseFloat(lng), pLat, pLng);
+
+        return {
+          eLoc: place.id,
+          placeName: place.displayName?.text || 'EV Charging Station',
+          placeAddress: place.formattedAddress || '',
+          latitude: pLat,
+          longitude: pLng,
+          distance,
+          type: 'electric_vehicle_charging_station',
+          keywords: '',
+          orderIndex: index
+        };
+      })
+      .filter(s => !blockedSet.has(s.eLoc));
 
     return res.json({
       success: true,

@@ -202,7 +202,7 @@ export function AppProvider({ children }) {
           : '—';
 
         return {
-          _id: place.eLoc || `mappls_${i}`,
+          _id: place.eLoc || `google_${i}`,
           icon,
           name: place.placeName || 'EV Charging Station',
           address: place.placeAddress || '',
@@ -215,7 +215,7 @@ export function AppProvider({ children }) {
           lat: place.latitude,
           lng: place.longitude,
           mapPos: null,
-          _source: 'mappls'
+          _source: 'google'
         };
       });
     } catch (err) {
@@ -425,13 +425,21 @@ export function AppProvider({ children }) {
       if (lng > maxLng) maxLng = lng;
     });
 
-    const buffer = 0.08;
-    const chargers = await fetchOSMChargingStations({
-      south: minLat - buffer,
-      west: minLng - buffer,
-      north: maxLat + buffer,
-      east: maxLng + buffer,
-    });
+    const centerLat = (minLat + maxLat) / 2;
+    const centerLng = (minLng + maxLng) / 2;
+    const getDistLocal = (la1, lo1, la2, lo2) => {
+      const R = 6371e3;
+      const dLat = (la2 - la1) * Math.PI / 180;
+      const dLon = (lo2 - lo1) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(la1 * Math.PI / 180) * Math.cos(la2 * Math.PI / 180) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    };
+    const routeDistance = getDistLocal(start.lat, start.lng, destination.lat, destination.lng);
+    const radius = Math.min(50000, Math.max(5000, routeDistance / 2));
+    const chargers = await fetchNearbyStations(centerLat, centerLng, radius).catch(() => []) || [];
 
     const dbStations = await searchStations('').catch(() => []) || [];
     const allCandidateStations = [...dbStations, ...chargers];
@@ -610,10 +618,50 @@ export function AppProvider({ children }) {
         totalCost,
       }
     };
-  }, [fetchOSMRoute, fetchOSMChargingStations, searchStations]);
+  }, [fetchOSMRoute, fetchNearbyStations, searchStations]);
+
+  const fetchStationReviews = useCallback(async (stationId, page = 1) => {
+    const r = await apiCall(`/reviews/station/${stationId}?page=${page}&limit=15`);
+    if (!r.ok) return { reviews: [], pagination: null };
+    return { reviews: r.data.data || [], pagination: r.data.pagination || null };
+  }, []);
+
+  const submitStationReview = useCallback(async (reviewData) => {
+    if (!token) throw new Error('Not authenticated');
+    const r = await apiCall('/reviews', { method: 'POST', body: reviewData }, token);
+    if (!r.ok) throw new Error(r.error || 'Failed to submit review');
+    return r.data;
+  }, [token]);
+
+  const fetchFeedbacks = useCallback(async (page = 1) => {
+    const r = await apiCall(`/feedbacks?page=${page}&limit=12`);
+    if (!r.ok) return { feedbacks: [], pagination: null };
+    return { feedbacks: r.data.data || [], pagination: r.data.pagination || null };
+  }, []);
+
+  const submitFeedback = useCallback(async (feedbackData) => {
+    if (!token) throw new Error('Not authenticated');
+    const r = await apiCall('/feedbacks', { method: 'POST', body: feedbackData }, token);
+    if (!r.ok) throw new Error(r.error || 'Failed to submit feedback');
+    return r.data;
+  }, [token]);
+
+  const blockStationAdmin = useCallback(async (stationId, reason) => {
+    if (!token) throw new Error('Not authenticated');
+    const r = await apiCall('/admin/stations/block', { method: 'POST', body: { stationId, reason } }, token);
+    if (!r.ok) throw new Error(r.error || 'Failed to block station');
+    return r.data;
+  }, [token]);
+
+  const unblockStationAdmin = useCallback(async (stationId) => {
+    if (!token) throw new Error('Not authenticated');
+    const r = await apiCall(`/admin/stations/block/${stationId}`, { method: 'DELETE' }, token);
+    if (!r.ok) throw new Error(r.error || 'Failed to unblock station');
+    return r.data;
+  }, [token]);
 
   return (
-    <Ctx.Provider value={{ user, token, toasts, showToast, authModal, setAuthModal, bookingModal, setBookingModal, selectedStation, setSelectedStation, backendOnline, login, signup, logout, googleLogin, createBooking, searchStations, fetchNearbyStations, theme, toggleTheme, articleEditorModal, setArticleEditorModal, fetchArticles, fetchArticle, fetchAdminArticles, createArticle, updateArticle, deleteArticle, searchAddressNominatim, fetchOSMChargingStations, fetchOSMRoute, planEVRoute }}>
+    <Ctx.Provider value={{ user, token, toasts, showToast, authModal, setAuthModal, bookingModal, setBookingModal, selectedStation, setSelectedStation, backendOnline, login, signup, logout, googleLogin, createBooking, searchStations, fetchNearbyStations, theme, toggleTheme, articleEditorModal, setArticleEditorModal, fetchArticles, fetchArticle, fetchAdminArticles, createArticle, updateArticle, deleteArticle, searchAddressNominatim, fetchOSMChargingStations, fetchOSMRoute, planEVRoute, fetchStationReviews, submitStationReview, fetchFeedbacks, submitFeedback, blockStationAdmin, unblockStationAdmin }}>
       {children}
     </Ctx.Provider>
   );

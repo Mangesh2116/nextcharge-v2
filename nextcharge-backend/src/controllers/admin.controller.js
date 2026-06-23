@@ -2,6 +2,7 @@ const User = require('../models/User');
 const Station = require('../models/Station');
 const Booking = require('../models/Booking');
 const Review = require('../models/Review');
+const BlockedStation = require('../models/BlockedStation');
 const { asyncHandler, sendSuccess, sendPaginated } = require('../utils/errors');
 
 // ─── Dashboard Overview ───────────────────────────────────────────────────────
@@ -129,4 +130,55 @@ exports.getRevenueAnalytics = asyncHandler(async (req, res) => {
   ]);
 
   sendSuccess(res, { analytics }, 'Revenue analytics fetched');
+});
+
+// ─── Block / Fake Station Management ─────────────────────────────────────────
+exports.blockStation = asyncHandler(async (req, res) => {
+  const { stationId, reason } = req.body;
+  if (!stationId) {
+    return res.status(400).json({ success: false, message: 'stationId is required' });
+  }
+
+  // Create or update blocking
+  let blocked = await BlockedStation.findOne({ stationId });
+  if (blocked) {
+    blocked.reason = reason || blocked.reason;
+    blocked.blockedBy = req.user._id;
+    await blocked.save();
+  } else {
+    blocked = await BlockedStation.create({
+      stationId,
+      blockedBy: req.user._id,
+      reason: reason || 'Fake or inaccurate details reported by admin'
+    });
+  }
+
+  // If it's a station in our MongoDB, we deactivate it too!
+  const isObjectId = require('mongoose').Types.ObjectId.isValid(stationId);
+  if (isObjectId) {
+    await Station.findByIdAndUpdate(stationId, { status: 'inactive' });
+  }
+
+  sendSuccess(res, { blocked }, 'Station blocked successfully and hidden from search.');
+});
+
+exports.getBlockedStations = asyncHandler(async (req, res) => {
+  const blocked = await BlockedStation.find().populate('blockedBy', 'name email');
+  sendSuccess(res, { count: blocked.length, data: blocked }, 'Blocked stations fetched');
+});
+
+exports.unblockStation = asyncHandler(async (req, res) => {
+  const { stationId } = req.params;
+  const result = await BlockedStation.deleteOne({ stationId });
+  if (result.deletedCount === 0) {
+    return res.status(404).json({ success: false, message: 'Blocked station not found' });
+  }
+
+  // Reactivate in MongoDB if it exists
+  const isObjectId = require('mongoose').Types.ObjectId.isValid(stationId);
+  if (isObjectId) {
+    await Station.findByIdAndUpdate(stationId, { status: 'active' });
+  }
+
+  sendSuccess(res, {}, 'Station unblocked successfully');
 });

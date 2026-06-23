@@ -443,18 +443,25 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
     showToast, 
     fetchNearbyStations,
     searchAddressNominatim,
-    fetchOSMChargingStations,
     planEVRoute,
-    theme
+    theme,
+    fetchStationReviews,
+    submitStationReview,
+    blockStationAdmin
   } = useApp();
 
   // Core Exploration States
   const [query, setQuery] = useState('');
   const [searchLoading, setSearchLoading] = useState(false);
-  const [mapplsStations, setMapplsStations] = useState([]);
-  const [mapplsLoading, setMapplsLoading] = useState(false);
-  const [osmStations, setOsmStations] = useState([]);
-  const [osmLoading, setOsmLoading] = useState(false);
+  const [googleStations, setGoogleStations] = useState([]);
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  // Reviews States
+  const [reviews, setReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [newReview, setNewReview] = useState({ rating: 5, body: '', title: '' });
+  const [submittingReview, setSubmittingReview] = useState(false);
 
   // Tab State
   const [sidebarTab, setSidebarTab] = useState('explore'); // 'explore' | 'route'
@@ -481,10 +488,9 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
 
   // Active Station Pin
   const baseStations = useMemo(() => [
-    ...osmStations, 
-    ...mapplsStations, 
+    ...googleStations, 
     ...apiStations
-  ], [osmStations, mapplsStations, apiStations]);
+  ], [googleStations, apiStations]);
   const finalCandidates = baseStations;
 
   useEffect(() => {
@@ -531,6 +537,24 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
     }
   }, [baseStations, activePin]);
 
+  useEffect(() => {
+    if (!activePin) {
+      setReviews([]);
+      return;
+    }
+    (async () => {
+      setReviewsLoading(true);
+      try {
+        const { reviews } = await fetchStationReviews(activePin._id);
+        setReviews(reviews || []);
+      } catch (err) {
+        console.warn('Failed to load station reviews');
+      } finally {
+        setReviewsLoading(false);
+      }
+    })();
+  }, [activePin, fetchStationReviews]);
+
   const [focusSearch, setFocusSearch] = useState(false);
   const [filter, setFilter] = useState('All');
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -552,33 +576,78 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
     setBookingModal(true);
   };
 
-  const loadMapplsStations = useCallback(async (lat, lng, radius = 10000) => {
-    setMapplsLoading(true);
+  const handleBlockStation = async () => {
+    if (!activePin) return;
+    if (!window.confirm(`Are you sure you want to block "${activePin.name}"? It will be hidden from maps for all website users.`)) return;
+    try {
+      await blockStationAdmin(activePin._id, "Blocked by Admin as fake or inaccurate station.");
+      showToast("Station blocked successfully!", "success");
+      // Remove it from current state
+      setGoogleStations(prev => prev.filter(s => s._id !== activePin._id));
+      setActivePin(null);
+    } catch (err) {
+      showToast(err.message || "Failed to block station.", "error");
+    }
+  };
+
+  const handleOpenReviewModal = () => {
+    if (!user) {
+      setAuthModal('login');
+      return;
+    }
+    setNewReview({ rating: 5, title: '', body: '' });
+    setShowReviewModal(false); // We'll render a simple review modal directly or inline!
+    setShowReviewModal(true);
+  };
+
+  const handleReviewSubmit = async (e) => {
+    e.preventDefault();
+    if (!newReview.body.trim()) {
+      showToast("Please write a review comment.", "warning");
+      return;
+    }
+    setSubmittingReview(true);
+    try {
+      const payload = {
+        rating: newReview.rating,
+        title: newReview.title || 'Station Review',
+        body: newReview.body,
+        tags: []
+      };
+      if (activePin._source === 'google') {
+        payload.googlePlaceId = activePin._id;
+        payload.stationName = activePin.name;
+        payload.stationAddress = activePin.address;
+      } else {
+        payload.stationId = activePin._id;
+      }
+
+      await submitStationReview(payload);
+      showToast("Review submitted successfully!", "success");
+      setShowReviewModal(false);
+      // Reload reviews
+      const { reviews: updatedReviews } = await fetchStationReviews(activePin._id);
+      setReviews(updatedReviews || []);
+    } catch (err) {
+      showToast(err.message || "Failed to submit review.", "error");
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
+  const loadGoogleStations = useCallback(async (lat, lng, radius = 10000) => {
+    setGoogleLoading(true);
     try {
       const stations = await fetchNearbyStations(lat, lng, radius);
       if (stations && stations.length > 0) {
-        setMapplsStations(stations);
+        setGoogleStations(stations);
       }
     } catch (e) {
-      console.warn('Mappls fetch failed');
+      console.warn('Google Places fetch failed');
     } finally {
-      setMapplsLoading(false);
+      setGoogleLoading(false);
     }
   }, [fetchNearbyStations]);
-
-  const loadOSMStations = useCallback(async (lat, lng, radius = 10000) => {
-    setOsmLoading(true);
-    try {
-      const stations = await fetchOSMChargingStations({ lat, lng, radius });
-      if (stations && stations.length > 0) {
-        setOsmStations(stations);
-      }
-    } catch (e) {
-      console.warn('OSM Overpass fetch failed');
-    } finally {
-      setOsmLoading(false);
-    }
-  }, [fetchOSMChargingStations]);
 
   useEffect(() => {
     const checkGoogle = setInterval(() => {
@@ -600,8 +669,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
         const { latitude, longitude } = position.coords;
         setUserLoc({ lat: latitude, lng: longitude });
 
-        loadMapplsStations(latitude, longitude, 10000);
-        loadOSMStations(latitude, longitude, 10000);
+        loadGoogleStations(latitude, longitude, 10000);
 
         if (mapInstanceRef.current) {
           const latLng = new window.google.maps.LatLng(latitude, longitude);
@@ -807,7 +875,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
               ⚡ ${s.maxSpeed || '50 kW'}
             </span>
           </div>
-          <div style="font-size: 0.60rem; color: #94A3B8; margin-top: 4px; font-weight: 500;">Source: ${s._source === 'mappls' ? 'Mappls' : 'NextCharge'} Network</div>
+          <div style="font-size: 0.60rem; color: #94A3B8; margin-top: 4px; font-weight: 500;">Source: ${s._source === 'google' ? 'Google Maps' : 'NextCharge'} Network</div>
         </div>
       `;
 
@@ -856,8 +924,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
 
     renderMarkers();
 
-    loadMapplsStations(19.0596, 72.8656, 10000);
-    loadOSMStations(19.0596, 72.8656, 10000);
+    loadGoogleStations(19.0596, 72.8656, 10000);
     locateUser(false);
 
     const onMoveEnd = () => {
@@ -870,8 +937,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
         const ne = bounds.getNorthEast();
         const diagMeters = getDistanceMeters(center.lat(), center.lng(), ne.lat(), ne.lng());
         const radius = Math.min(Math.max(diagMeters, 2000), 12000);
-        loadMapplsStations(center.lat(), center.lng(), Math.round(radius));
-        loadOSMStations(center.lat(), center.lng(), Math.round(radius));
+        loadGoogleStations(center.lat(), center.lng(), Math.round(radius));
       }, 300);
     };
 
@@ -952,13 +1018,12 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
         mapInstanceRef.current.panTo({ lat: targetLat, lng: targetLng });
       }
 
-        await loadMapplsStations(targetLat, targetLng, 10000);
-        await loadOSMStations(targetLat, targetLng, 10000);
+        await loadGoogleStations(targetLat, targetLng, 10000);
         showToast(`Showing chargers near ${display_name.split(',')[0]}`, 'success');
       } else {
         showToast('Location not found in India', 'warning');
       }
-    } catch {
+    } catch (err) {
       showToast('Search error. Please try again.', 'error');
     } finally {
       setSearchLoading(false);
@@ -976,8 +1041,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
     const center = mapInstanceRef.current.getCenter();
     const lat = center.lat();
     const lng = center.lng();
-    loadMapplsStations(lat, lng, 10000);
-    loadOSMStations(lat, lng, 10000);
+    loadGoogleStations(lat, lng, 10000);
     showToast('Refreshing nearby chargers...', 'info');
   };
 
@@ -1104,7 +1168,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
                 color: 'var(--text)',
                 transition: 'all 0.2s ease-in-out',
                 outline: 'none',
-                animation: (mapplsLoading || osmLoading) ? 'spin 1s linear infinite' : 'none'
+                animation: googleLoading ? 'spin 1s linear infinite' : 'none'
               }}
               onMouseEnter={e => {
                 e.currentTarget.style.transform = 'scale(1.06)';
@@ -1122,17 +1186,17 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
             </button>
           </div>
 
-          {/* OSM / Mappls Loading Indicator */}
-          {(mapplsLoading || osmLoading) && (
+          {/* Google Maps Loading Indicator */}
+          {googleLoading && (
             <div style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', zIndex: 1000, background: 'rgba(15,23,42,0.9)', backdropFilter: 'blur(10px)', padding: '6px 16px', borderRadius: 20, border: '1px solid var(--border-accent)', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 600 }}>
               <div style={{ width: 14, height: 14, border: '2px solid var(--border)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
               Loading live chargers...
             </div>
           )}
 
-          {/* Powered by OpenStreetMap / Mappls badge */}
+          {/* Powered by Google badge */}
           <div style={{ position: 'absolute', bottom: 12, right: 12, zIndex: 1000, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(10px)', padding: '4px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)', fontSize: '0.65rem', color: 'rgba(255,255,255,0.6)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4 }}>
-            ⚡ NextCharge Live Network · {finalCandidates.length} Active Stations
+            ⚡ Google Maps Network · {finalCandidates.length} Active Stations
           </div>
 
           {/* Floating EV Filters */}
@@ -1225,8 +1289,8 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
           {/* TAB 1: Explore Chargers Detail View */}
           {sidebarTab === 'explore' && (
             activePin ? (
-              <div style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between', width: '100%' }}>
-                <div>
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between', width: '100%', paddingBottom: '1rem' }}>
+                <div style={{ flex: 1, overflowY: 'auto', paddingRight: 6, marginBottom: '1rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.8rem' }}>
                     <span style={{ fontSize: '2rem' }}>{activePin.icon || '⚡'}</span>
                     <span style={{
@@ -1261,7 +1325,9 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
                     </div>
                     <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px', textAlign: 'left' }}>
                       <div style={{ fontSize: '0.72rem', color: 'var(--muted)', marginBottom: 2 }}>Source</div>
-                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase' }}>{activePin._source === 'osm' || activePin._source === 'nextcharge' ? 'NEXTCHARGE' : activePin._source || 'DB'}</div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase' }}>
+                        {activePin._source === 'google' ? 'GOOGLE MAPS' : activePin._source === 'nextcharge' ? 'NEXTCHARGE' : 'DB'}
+                      </div>
                     </div>
                   </div>
 
@@ -1276,54 +1342,171 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
                       ))}
                     </div>
                   </div>
+
+                  {/* Reviews Section */}
+                  <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.2rem', textAlign: 'left', marginBottom: '1.5rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 750, color: 'var(--text)' }}>Station Reviews ({reviews.length})</span>
+                      <button 
+                        onClick={handleOpenReviewModal} 
+                        style={{ background: 'none', border: 'none', color: 'var(--orange)', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', padding: 0, outline: 'none' }}
+                      >
+                        + Write a Review
+                      </button>
+                    </div>
+
+                    {reviewsLoading ? (
+                      <div style={{ display: 'flex', justifyContent: 'center', padding: '1rem 0' }}>
+                        <div style={{ width: 18, height: 18, border: '2px solid var(--border)', borderTopColor: 'var(--orange)', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+                      </div>
+                    ) : reviews.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {reviews.map((r, i) => (
+                          <div key={r._id || i} style={{ background: 'var(--bg-soft)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px', textAlign: 'left' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                              <strong style={{ fontSize: '0.78rem', color: 'var(--text)' }}>{r.user?.name || 'Anonymous User'}</strong>
+                              <span style={{ color: '#F59E0B', fontSize: '0.72rem' }}>{'★'.repeat(r.rating)}</span>
+                            </div>
+                            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.45 }}>{r.body}</p>
+                            <span style={{ fontSize: '0.62rem', color: 'var(--muted)', display: 'block', marginTop: 4 }}>
+                              {new Date(r.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ textAlign: 'center', fontSize: '0.78rem', color: 'var(--muted)', padding: '1rem 0' }}>
+                        No reviews yet. Be the first to write one!
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Action Buttons */}
-                <div style={{ display: 'flex', gap: 8, marginTop: 'auto', width: '100%' }}>
-                  <a 
-                    href={`https://www.google.com/maps/dir/?api=1&destination=${activePin.lat},${activePin.lng}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      background: '#1a73e8',
-                      color: '#ffffff',
-                      border: 'none',
-                      borderRadius: 12,
-                      padding: '0.75rem 1.25rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px',
-                      textDecoration: 'none',
-                      fontWeight: 600,
-                      fontSize: '0.88rem',
-                      boxShadow: '0 2px 6px rgba(26, 115, 232, 0.3)',
-                      transition: 'all 0.2s ease-in-out',
-                      cursor: 'pointer'
-                    }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.background = '#1557b0';
-                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(26, 115, 232, 0.4)';
-                      e.currentTarget.style.transform = 'translateY(-1px)';
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.background = '#1a73e8';
-                      e.currentTarget.style.boxShadow = '0 2px 6px rgba(26, 115, 232, 0.3)';
-                      e.currentTarget.style.transform = 'translateY(0)';
-                    }}
-                    title="Get Directions"
-                  >
-                    <DirectionsIcon size={18} />
-                    <span>Directions</span>
-                  </a>
-                  <button 
-                    type="button"
-                    onClick={handleBook}
-                    style={{ ...btnBase('primary', { flex: 1, padding: '0.75rem', borderRadius: 12, fontSize: '0.88rem' }) }}
-                  >
-                    ⚡ Book Slot
-                  </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
+                  <div style={{ display: 'flex', gap: 8, width: '100%' }}>
+                    <a 
+                      href={`https://www.google.com/maps/dir/?api=1&destination=${activePin.lat},${activePin.lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        background: '#1a73e8',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: 12,
+                        padding: '0.75rem 1.25rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        textDecoration: 'none',
+                        fontWeight: 600,
+                        fontSize: '0.88rem',
+                        boxShadow: '0 2px 6px rgba(26, 115, 232, 0.3)',
+                        transition: 'all 0.2s ease-in-out',
+                        cursor: 'pointer'
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.background = '#1557b0';
+                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(26, 115, 232, 0.4)';
+                        e.currentTarget.style.transform = 'translateY(-1px)';
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.background = '#1a73e8';
+                        e.currentTarget.style.boxShadow = '0 2px 6px rgba(26, 115, 232, 0.3)';
+                        e.currentTarget.style.transform = 'translateY(0)';
+                      }}
+                      title="Get Directions"
+                    >
+                      <DirectionsIcon size={18} />
+                      <span>Directions</span>
+                    </a>
+                    {activePin._source !== 'google' && (
+                      <button 
+                        type="button"
+                        onClick={handleBook}
+                        style={{ ...btnBase('primary', { flex: 1, padding: '0.75rem', borderRadius: 12, fontSize: '0.88rem' }) }}
+                      >
+                        ⚡ Book Slot
+                      </button>
+                    )}
+                  </div>
+                  {user?.role === 'admin' && (
+                    <button
+                      type="button"
+                      onClick={handleBlockStation}
+                      style={{
+                        width: '100%',
+                        background: '#EF4444',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: 12,
+                        padding: '0.7rem',
+                        fontWeight: 700,
+                        fontSize: '0.84rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        boxShadow: '0 2px 8px rgba(239, 68, 68, 0.2)'
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#DC2626'}
+                      onMouseLeave={e => e.currentTarget.style.background = '#EF4444'}
+                    >
+                      🚫 Block Fake Station
+                    </button>
+                  )}
                 </div>
+
+                {/* Station Review Modal Popup */}
+                {showReviewModal && (
+                  <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'var(--backdrop-bg)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 20, padding: '2rem', width: 360, maxWidth: '90vw', textAlign: 'left', boxShadow: 'var(--shadow-xl)' }}>
+                      <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text)', marginBottom: '0.5rem' }}>Write a Review</h3>
+                      <p style={{ fontSize: '0.78rem', color: 'var(--muted)', marginBottom: '1.2rem' }}>Share your charging experience at {activePin.name}</p>
+                      <form onSubmit={handleReviewSubmit}>
+                        {/* Rating Selector */}
+                        <label style={{ fontSize: '0.72rem', color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: 6 }}>Rating</label>
+                        <div style={{ display: 'flex', gap: 6, marginBottom: '1rem', fontSize: '1.5rem', cursor: 'pointer' }}>
+                          {[1, 2, 3, 4, 5].map(star => (
+                            <span 
+                              key={star} 
+                              onClick={() => setNewReview(r => ({ ...r, rating: star }))}
+                              style={{ color: star <= newReview.rating ? '#F59E0B' : 'var(--border)' }}
+                            >
+                              ★
+                            </span>
+                          ))}
+                        </div>
+
+                        {/* Title */}
+                        <label style={{ fontSize: '0.72rem', color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: 4 }}>Title (Optional)</label>
+                        <input
+                          value={newReview.title}
+                          onChange={e => setNewReview(r => ({ ...r, title: e.target.value }))}
+                          placeholder="Short summary (e.g. Fast charging!)"
+                          style={{ ...inpStyle, marginBottom: '0.8rem', fontSize: '0.82rem', padding: '8px 12px' }}
+                        />
+
+                        {/* Review Text */}
+                        <label style={{ fontSize: '0.72rem', color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: 4 }}>Review Comment</label>
+                        <textarea
+                          required
+                          value={newReview.body}
+                          onChange={e => setNewReview(r => ({ ...r, body: e.target.value }))}
+                          placeholder="Describe wait times, charger functionality, cleanliness..."
+                          rows={4}
+                          style={{ ...inpStyle, marginBottom: '1.2rem', resize: 'none', fontSize: '0.82rem', padding: '8px 12px', height: '80px' }}
+                        />
+
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button type="button" onClick={() => setShowReviewModal(false)} style={btnBase('ghost', { flex: 1, padding: '0.6rem' })}>Cancel</button>
+                          <button type="submit" disabled={submittingReview} style={btnBase('primary', { flex: 1, padding: '0.6rem', opacity: submittingReview ? 0.7 : 1 })}>
+                            {submittingReview ? 'Submitting...' : 'Submit'}
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--muted)', padding: '2rem 0' }}>
@@ -2154,65 +2337,256 @@ function AppPhoneMockup() {
   );
 }
 
-/* ─── Testimonials ─────────────────────────────────────────────────────────── */
+/* ─── 3D Website Review / Testimonials Section ──────────────────────────────── */
 const TESTIMONIALS = [
-  { text: "NextCharge is my go-to app for every road trip. The availability is accurate and booking a slot takes less than a minute.", name: 'Rohit Sharma', role: 'Hyundai Ioniq 5', rating: 5, avatar: 'R' },
-  { text: "Smooth payments, great support and India-wide network. Charging has never been this effortless for daily commutes.", name: 'Neha Varma', role: 'Tata Nexon EV', rating: 5, avatar: 'N' },
-  { text: "I love how NextCharge shows live updates. It saves time and makes my daily drive completely worry-free.", name: 'Arjun Mehta', role: 'MG ZS EV', rating: 5, avatar: 'A' },
+  { comment: "NextCharge is my go-to app for every road trip. The availability is accurate and booking a slot takes less than a minute.", user: { name: 'Rohit Sharma' }, rating: 5 },
+  { comment: "Smooth payments, great support and India-wide network. Charging has never been this effortless for daily commutes.", user: { name: 'Neha Varma' }, rating: 5 },
+  { comment: "I love how NextCharge shows live updates. It saves time and makes my daily drive completely worry-free.", user: { name: 'Arjun Mehta' }, rating: 5 }
 ];
+
+function TiltCard({ children, style, active }) {
+  const cardRef = useRef(null);
+  const [coords, setCoords] = useState({ rotateX: 0, rotateY: 0 });
+
+  const handleMouseMove = (e) => {
+    if (!cardRef.current || !active) return;
+    const card = cardRef.current;
+    const rect = card.getBoundingClientRect();
+    const x = e.clientX - rect.left - rect.width / 2;
+    const y = e.clientY - rect.top - rect.height / 2;
+    const rotateY = (x / (rect.width / 2)) * 12;
+    const rotateX = -(y / (rect.height / 2)) * 12;
+    setCoords({ rotateX, rotateY });
+  };
+
+  const handleMouseLeave = () => {
+    setCoords({ rotateX: 0, rotateY: 0 });
+  };
+
+  return (
+    <div
+      ref={cardRef}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      style={{
+        ...style,
+        transform: active 
+          ? `perspective(1000px) rotateX(${coords.rotateX}deg) rotateY(${coords.rotateY}deg) scale3d(1.03, 1.03, 1.03)` 
+          : 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)',
+        transition: active ? 'transform 0.08s ease-out' : 'transform 0.4s ease',
+        transformStyle: 'preserve-3d'
+      }}
+    >
+      <div style={{ transform: active ? 'translateZ(25px)' : 'none', transition: 'transform 0.25s' }}>
+        {children}
+      </div>
+    </div>
+  );
+}
 
 export function TestimonialsSection() {
   const rev = useScrollReveal();
+  const { user, setAuthModal, showToast, fetchFeedbacks, submitFeedback } = useApp();
+  const [feedbacks, setFeedbacks] = useState([]);
   const [active, setActive] = useState(0);
+  
+  const [showModal, setShowModal] = useState(false);
+  const [newFeedback, setNewFeedback] = useState({ rating: 5, comment: '' });
+  const [submitting, setSubmitting] = useState(false);
+
+  const loadFeedbacks = useCallback(async () => {
+    try {
+      const { feedbacks: fetched } = await fetchFeedbacks(1);
+      if (fetched && fetched.length > 0) {
+        setFeedbacks(fetched);
+      } else {
+        setFeedbacks(TESTIMONIALS);
+      }
+    } catch {
+      setFeedbacks(TESTIMONIALS);
+    }
+  }, [fetchFeedbacks]);
 
   useEffect(() => {
-    const t = setInterval(() => setActive(p => (p + 1) % TESTIMONIALS.length), 4500);
+    loadFeedbacks();
+  }, [loadFeedbacks]);
+
+  useEffect(() => {
+    if (feedbacks.length === 0) return;
+    const t = setInterval(() => {
+      if (!showModal) {
+        setActive(p => (p + 1) % feedbacks.length);
+      }
+    }, 5500);
     return () => clearInterval(t);
-  }, []);
+  }, [feedbacks, showModal]);
+
+  const handleOpenModal = () => {
+    if (!user) {
+      setAuthModal('login');
+      return;
+    }
+    setNewFeedback({ rating: 5, comment: '' });
+    setShowModal(true);
+  };
+
+  const handleFeedbackSubmit = async (e) => {
+    e.preventDefault();
+    if (!newFeedback.comment.trim()) {
+      showToast('Please type a feedback comment', 'warning');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await submitFeedback(newFeedback);
+      showToast('Website feedback submitted successfully! Thank you!', 'success');
+      setShowModal(false);
+      loadFeedbacks();
+    } catch (err) {
+      showToast(err.message || 'Failed to submit feedback', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
-    <section ref={rev.ref} className={`reveal ${rev.visible?'visible':''}`} style={{ ...secStyle('var(--bg-soft)'), textAlign:'center' }}>
+    <section ref={rev.ref} className={`reveal ${rev.visible?'visible':''}`} style={{ ...secStyle('var(--bg-soft)'), textAlign:'center', position: 'relative' }}>
       <div style={{ maxWidth:1100, margin:'0 auto' }}>
         <span style={tagStyle}>Real User Stories</span>
         <h2 style={h2Style}>Real people. Real experiences.</h2>
-        <p style={{ color:'var(--muted)', maxWidth:480, margin:'0 auto 3rem', lineHeight:1.7, fontSize:'0.93rem' }}>
+        <p style={{ color:'var(--muted)', maxWidth:480, margin:'0 auto 2.5rem', lineHeight:1.7, fontSize:'0.93rem' }}>
           Thousands of EV drivers across India trust NextCharge every single day.
         </p>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))', gap:'1.2rem', textAlign:'left' }}>
-          {TESTIMONIALS.map((t, i) => (
-            <div
-              key={t.name}
-              onClick={() => setActive(i)}
-              style={{
-                background:'var(--surface)',
-                border:`1px solid ${i === active ? 'rgba(255,107,0,0.3)' : 'var(--glass-border)'}`,
-                borderRadius:20, padding:'1.8rem',
-                cursor:'pointer',
-                transition:'all 0.35s cubic-bezier(0.23,1,0.32,1)',
-                transform: i === active ? 'translateY(-4px) scale(1.02)' : 'none',
-                boxShadow: i === active ? '0 12px 40px rgba(255,107,0,0.12)' : 'var(--shadow-sm)',
-                position:'relative',
-              }}
-            >
-              {i === active && <div style={{ position:'absolute', top:0, left:0, right:0, height:3, background:'linear-gradient(90deg, #FF6B00, #FF8C38)', borderRadius:'20px 20px 0 0' }} />}
-              <div style={{ color:'#F59E0B', fontSize:'0.9rem', letterSpacing:2, marginBottom:'0.8rem' }}>{'★'.repeat(t.rating)}</div>
-              <p style={{ fontSize:'0.88rem', color:'var(--text-secondary)', lineHeight:1.7, marginBottom:'1.2rem', fontStyle:'italic' }}>"{t.text}"</p>
-              <div style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
-                <div style={{ width:38, height:38, borderRadius:'50%', background:'linear-gradient(135deg, #FF6B00, #FF8C38)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:800, fontSize:'0.9rem', color:'#fff', flexShrink:0 }}>{t.avatar}</div>
-                <div>
-                  <div style={{ fontWeight:700, fontSize:'0.88rem', color:'var(--text)' }}>{t.name}</div>
-                  <div style={{ fontSize:'0.72rem', color:'var(--muted)', marginTop:1 }}>{t.role}</div>
-                </div>
-              </div>
+
+        {/* Dynamic 3D testmonials grid */}
+        {feedbacks.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minHeight: 300, justifyContent: 'center' }}>
+            <div style={{ display: 'flex', gap: '1.2rem', justifyContent: 'center', width: '100%', flexWrap: 'wrap', maxWidth: 900 }}>
+              {feedbacks.slice(0, 3).map((t, i) => {
+                const isActive = active % feedbacks.slice(0,3).length === i;
+                return (
+                  <TiltCard
+                    key={t.user?.name + i}
+                    active={isActive}
+                    style={{
+                      flex: '1 1 260px',
+                      maxWidth: 290,
+                      background: 'var(--surface)',
+                      border: `1px solid ${isActive ? 'rgba(255,107,0,0.35)' : 'var(--glass-border)'}`,
+                      borderRadius: 20, 
+                      padding: '2rem 1.8rem',
+                      cursor: 'pointer',
+                      boxShadow: isActive ? 'var(--neon-glow)' : 'var(--shadow-sm)',
+                      position: 'relative',
+                    }}
+                  >
+                    {isActive && <div style={{ position:'absolute', top:0, left:0, right:0, height:3.5, background:'linear-gradient(90deg, #FF6B00, #FF8C38)', borderRadius:'20px 20px 0 0' }} />}
+                    <div style={{ color:'#F59E0B', fontSize:'0.95rem', letterSpacing:2, marginBottom:'0.9rem', textAlign: 'left' }}>
+                      {'★'.repeat(t.rating)}{'☆'.repeat(5 - t.rating)}
+                    </div>
+                    <p style={{ fontSize:'0.88rem', color: isActive ? 'var(--text)' : 'var(--text-secondary)', lineHeight:1.7, marginBottom:'1.5rem', fontStyle:'italic', textAlign: 'left', minHeight: 70 }}>
+                      "{t.comment || t.text}"
+                    </p>
+                    <div style={{ display:'flex', alignItems:'center', gap:'0.75rem', textAlign: 'left' }}>
+                      <div style={{ width:38, height:38, borderRadius:'50%', background:'linear-gradient(135deg, #FF6B00, #FF8C38)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:800, fontSize:'0.9rem', color:'#fff', flexShrink:0 }}>
+                        {(t.user?.name || 'A')[0].toUpperCase()}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight:700, fontSize:'0.88rem', color:'var(--text)' }}>{t.user?.name || 'Anonymous User'}</div>
+                        <div style={{ fontSize:'0.72rem', color:'var(--muted)', marginTop:1 }}>NextCharge EV Driver</div>
+                      </div>
+                    </div>
+                  </TiltCard>
+                );
+              })}
             </div>
-          ))}
-        </div>
-        <div style={{ display:'flex', justifyContent:'center', gap:8, marginTop:'2rem' }}>
-          {TESTIMONIALS.map((_, i) => (
-            <button key={i} onClick={() => setActive(i)} style={{ width: active === i ? 24 : 8, height:8, borderRadius:4, border:'none', background: active === i ? 'var(--orange)' : 'var(--border)', cursor:'pointer', transition:'all 0.3s', outline:'none' }} />
-          ))}
+
+            {/* Slider Dots */}
+            {feedbacks.length > 3 && (
+              <div style={{ display:'flex', justifyContent:'center', gap:8, marginTop:'2rem' }}>
+                {feedbacks.map((_, i) => (
+                  <button key={i} onClick={() => setActive(i)} style={{ width: active === i ? 24 : 8, height:8, borderRadius:4, border:'none', background: active === i ? 'var(--orange)' : 'var(--border)', cursor: 'pointer', transition: 'all 0.3s', outline:'none' }} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div style={{ marginTop: '2.5rem' }}>
+          <button
+            onClick={handleOpenModal}
+            style={{
+              background: 'linear-gradient(135deg, #FF6B00 0%, #FF8C38 100%)',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: 30,
+              padding: '0.75rem 2rem',
+              fontWeight: 700,
+              fontSize: '0.9rem',
+              cursor: 'pointer',
+              boxShadow: '0 4px 15px rgba(255, 107, 0, 0.25)',
+              transition: 'all 0.25s',
+              fontFamily: 'inherit'
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 6px 20px rgba(255, 107, 0, 0.4)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 4px 15px rgba(255, 107, 0, 0.25)';
+            }}
+          >
+            ★ Leave a Website Review
+          </button>
         </div>
       </div>
+
+      {/* General Website Feedback Modal */}
+      {showModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'var(--backdrop-bg)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 24, padding: '2.5rem', width: 380, maxWidth: '92vw', textAlign: 'left', boxShadow: 'var(--shadow-xl)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text)', margin: 0 }}>Website Review & Feedback</h3>
+              <button onClick={() => setShowModal(false)} style={{ background: 'var(--bg-soft)', border: 'none', color: 'var(--muted)', fontSize: '1rem', cursor: 'pointer', width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+            </div>
+            <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '1.5rem' }}>We value your comments to make NextCharge the best EV charging portal.</p>
+            <form onSubmit={handleFeedbackSubmit}>
+              {/* Stars Selector */}
+              <label style={{ fontSize: '0.72rem', color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: 6 }}>Rating</label>
+              <div style={{ display: 'flex', gap: 8, marginBottom: '1.2rem', fontSize: '1.8rem', cursor: 'pointer' }}>
+                {[1, 2, 3, 4, 5].map(star => (
+                  <span 
+                    key={star} 
+                    onClick={() => setNewFeedback(f => ({ ...f, rating: star }))}
+                    style={{ color: star <= newFeedback.rating ? '#F59E0B' : 'var(--border)', transition: 'color 0.15s' }}
+                  >
+                    ★
+                  </span>
+                ))}
+              </div>
+
+              {/* Comment */}
+              <label style={{ fontSize: '0.72rem', color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: 6 }}>Review Comment</label>
+              <textarea
+                required
+                rows={4}
+                value={newFeedback.comment}
+                onChange={e => setNewFeedback(f => ({ ...f, comment: e.target.value }))}
+                placeholder="What do you like? What can we improve? Let us know!"
+                style={{ ...inpStyle, marginBottom: '1.5rem', resize: 'none', height: 95 }}
+              />
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button type="button" onClick={() => setShowModal(false)} style={btnBase('ghost', { flex: 1, padding: '0.75rem' })}>Cancel</button>
+                <button type="submit" disabled={submitting} style={btnBase('primary', { flex: 1, padding: '0.75rem', opacity: submitting ? 0.7 : 1 })}>
+                  {submitting ? 'Submitting...' : 'Submit'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

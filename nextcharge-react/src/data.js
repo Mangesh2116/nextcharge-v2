@@ -1,11 +1,4 @@
-export const STATIONS = [
-  { _id: 's1', icon: '⚡', name: 'Tata Power EV Hub — BKC', address: 'Bandra Kurla Complex, Mumbai', distance: '0.8 km', portsOpen: '6/8', maxSpeed: '150 kW', price: '₹15/kWh', connectors: ['CCS2', 'CHAdeMO', 'Type 2 AC'], status: 'available', lat: 19.0596, lng: 72.8656, mapPos: { left: '28%', top: '33%' } },
-  { _id: 's2', icon: '🔋', name: 'Ather Grid — Andheri West', address: 'Andheri West, Mumbai', distance: '2.1 km', portsOpen: '4/4', maxSpeed: '7.2 kW', price: '₹8/kWh', connectors: ['Ather', 'Type 2 AC'], status: 'available', lat: 19.1224, lng: 72.8264, mapPos: { left: '58%', top: '33%' } },
-  { _id: 's3', icon: '🏢', name: 'BPCL Pulse — Powai', address: 'Powai, Mumbai', distance: '3.5 km', portsOpen: '2/6', maxSpeed: '60 kW', price: '₹12/kWh', connectors: ['CCS2', 'Type 2 AC', 'Bharat DC'], status: 'busy', lat: 19.1197, lng: 72.9081, mapPos: { left: '44%', top: '63%' } },
-  { _id: 's4', icon: '⚡', name: 'ChargeZone — Worli', address: 'Worli, Mumbai', distance: '4.2 km', portsOpen: '3/3', maxSpeed: '30 kW', price: '₹10/kWh', connectors: ['CCS2', 'CHAdeMO'], status: 'available', lat: 19.0096, lng: 72.8178, mapPos: { left: '19%', top: '63%' } },
-  { _id: 's5', icon: '🛣️', name: 'MG ZS Hub — Malad', address: 'Malad West, Mumbai', distance: '5.8 km', portsOpen: '8/10', maxSpeed: '50 kW', price: '₹13/kWh', connectors: ['CCS2', 'Type 2 AC', 'GB/T'], status: 'available', lat: 19.1875, lng: 72.8479, mapPos: { left: '74%', top: '58%' } },
-  { _id: 's6', icon: '🏪', name: 'Reliance BP — Navi Mumbai', address: 'Vashi, Navi Mumbai', distance: '8.1 km', portsOpen: '12/12', maxSpeed: '240 kW', price: '₹18/kWh', connectors: ['CCS2', 'CHAdeMO', 'Type 2 AC'], status: 'available', lat: 19.0771, lng: 73.0071, mapPos: null },
-];
+export const STATIONS = [];
 
 export const STATS = [
   { num: 'Launching Soon', label: 'Charging Points', icon: '⚡' },
