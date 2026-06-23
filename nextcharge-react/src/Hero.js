@@ -235,7 +235,7 @@ function PartnerLogos() {
   const partners = [
     { name: 'TATA', svg: <svg viewBox="0 0 80 30" width="60" height="22" aria-label="Tata"><text x="0" y="22" fontFamily="Arial" fontWeight="900" fontSize="22" fill="currentColor">TATA</text></svg> },
     { name: 'Mahindra', svg: <svg viewBox="0 0 110 30" width="90" height="22" aria-label="Mahindra"><text x="0" y="22" fontFamily="Arial" fontWeight="800" fontSize="16" fill="currentColor">Mahindra</text></svg> },
-    { name: 'IBM', svg: <svg viewBox="0 0 60 30" width="50" height="22" aria-label="IBM"><text x="0" y="22" fontFamily="Arial" fontWeight="900" fontSize="22" fill="currentColor">IBM</text></svg> },
+    { name: 'Ather', svg: <svg viewBox="0 0 70 30" width="55" height="22" aria-label="Ather"><text x="0" y="22" fontFamily="Arial" fontWeight="900" fontSize="18" fill="currentColor">Ather</text></svg> },
     { name: 'Hyundai', svg: <svg viewBox="0 0 100 30" width="80" height="22" aria-label="Hyundai"><text x="0" y="22" fontFamily="Arial" fontWeight="800" fontSize="17" fill="currentColor">Hyundai</text></svg> },
     { name: 'TVS', svg: <svg viewBox="0 0 60 30" width="48" height="22" aria-label="TVS"><text x="0" y="22" fontFamily="Arial" fontWeight="900" fontSize="22" fill="currentColor">TVS</text></svg> },
     { name: 'BPCL', svg: <svg viewBox="0 0 70 30" width="55" height="22" aria-label="BPCL"><text x="0" y="22" fontFamily="Arial" fontWeight="900" fontSize="18" fill="currentColor">BPCL</text></svg> },

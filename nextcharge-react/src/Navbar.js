@@ -4,7 +4,7 @@ import { useApp } from './context';
 import { useMagnetic, useIsTouchDevice } from './hooks';
 
 export default function Navbar() {
-  const { user, setAuthModal, logout, backendOnline, theme, toggleTheme } = useApp();
+  const { user, setAuthModal, logout, backendOnline, theme, toggleTheme, showToast } = useApp();
   const navigate = useNavigate();
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -95,9 +95,9 @@ export default function Navbar() {
           ]} />
           <NavDropdown label="About Us" items={[
             { label: 'Our Mission', action: () => scrollTo('how') },
-            { label: 'Team & Careers', action: () => {} },
-            { label: 'Press & Media', action: () => {} },
-            { label: 'Contact Us', action: () => {} },
+            { label: 'Team & Careers', action: () => showToast('Team & Careers portal launching soon.', 'info') },
+            { label: 'Press & Media', action: () => showToast('Press & Media room launching soon.', 'info') },
+            { label: 'Contact Us', action: () => showToast('Support line: Launching Soon! Email: support@nextcharge.in', 'info') },
           ]} />
           <NavLink onClick={() => navigate('/news')} label="Resources" isTouch={isTouch} />
         </ul>
