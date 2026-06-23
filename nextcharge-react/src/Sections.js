@@ -13,7 +13,7 @@ const DirectionsIcon = ({ size = 18 }) => (
 );
 
 const LocateIcon = ({ size = 20 }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
     <circle cx="12" cy="12" r="10" />
     <circle cx="12" cy="12" r="3" fill="currentColor" />
     <line x1="12" y1="1" x2="12" y2="4" />
@@ -24,7 +24,7 @@ const LocateIcon = ({ size = 20 }) => (
 );
 
 const RefreshIcon = ({ size = 18 }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
     <path d="M23 4v6h-6" />
     <path d="M1 20v-6h6" />
     <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
@@ -34,15 +34,20 @@ const RefreshIcon = ({ size = 18 }) => (
 
 const inpStyle = { width:'100%', background:'var(--glass-bg)', border:'1px solid var(--input-border)', borderRadius:12, padding:'0.75rem 1rem', color:'var(--text)', fontFamily:'inherit', fontSize:'0.9rem', outline:'none', boxSizing:'border-box', transition:'border-color 0.2s, box-shadow 0.2s' };
 const secStyle = bg => ({ padding:'5rem 5%', background: bg || 'var(--bg)' });
-const tagStyle = { color:'var(--accent)', fontSize:'0.75rem', fontWeight:700, letterSpacing:'0.12em', textTransform:'uppercase', marginBottom:'0.8rem', textShadow: 'var(--tag-glow)' };
-const h2Style = { fontSize:'clamp(1.8rem,4vw,2.8rem)', fontWeight:800, letterSpacing:'-0.03em', color:'var(--text)', marginBottom:'0.8rem', lineHeight:1.15 };
+const tagStyle = { color:'var(--orange)', fontSize:'0.72rem', fontWeight:700, letterSpacing:'0.14em', textTransform:'uppercase', marginBottom:'0.75rem', display:'block' };
+const h2Style = { fontSize:'clamp(1.8rem,4vw,2.8rem)', fontWeight:800, letterSpacing:'-0.03em', color:'var(--text)', marginBottom:'0.8rem', lineHeight:1.15, fontFamily:"'Outfit','Inter',sans-serif" };
 
-function StatItem({ num, label }) {
-  const { ref, formatted } = useCountUp(num);
+function StatItem({ stat, delay }) {
+  const { ref, formatted } = useCountUp(stat.num);
   return (
-    <div ref={ref} style={{ padding:'1.5rem 2rem', textAlign:'center', flex:1, minWidth:140 }}>
-      <span style={{ fontSize:'clamp(1.6rem,3vw,2.2rem)', fontWeight:800, color:'var(--accent)', display:'block', letterSpacing:'-0.02em' }}>{formatted}</span>
-      <div style={{ fontSize:'0.8rem', color:'var(--muted)', marginTop:4, fontWeight:500 }}>{label}</div>
+    <div
+      ref={ref}
+      className={`reveal visible reveal-delay-${delay+1}`}
+      style={{ padding:'1.8rem 1.5rem', textAlign:'center', flex:'1 1 160px', minWidth:140, position:'relative' }}
+    >
+      <div style={{ fontSize:'1.6rem', marginBottom:6 }}>{stat.icon}</div>
+      <span style={{ fontSize:'clamp(1.6rem,3vw,2.4rem)', fontWeight:900, color:'var(--orange)', display:'block', letterSpacing:'-0.03em', fontFamily:"'Outfit','Inter',sans-serif", lineHeight:1 }}>{formatted}</span>
+      <div style={{ fontSize:'0.75rem', color:'var(--muted)', marginTop:6, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em' }}>{stat.label}</div>
     </div>
   );
 }
@@ -50,11 +55,79 @@ function StatItem({ num, label }) {
 export function StatsBar() {
   const r = useScrollReveal();
   return (
-    <div ref={r.ref} className={`reveal ${r.visible?'visible':''}`} style={{ display:'flex', flexWrap:'wrap', background:'var(--bg-soft)', borderTop:'1px solid var(--section-border)', borderBottom:'1px solid var(--section-border)' }}>
-      {STATS.map((s,i) => <StatItem key={i} num={s.num} label={s.label} />)}
+    <div
+      ref={r.ref}
+      className={`reveal ${r.visible?'visible':''}`}
+      style={{ display:'flex', flexWrap:'wrap', background:'var(--bg-soft)', borderTop:'1px solid var(--section-border)', borderBottom:'1px solid var(--section-border)', position:'relative', overflow:'hidden' }}
+    >
+      <div style={{ position:'absolute', inset:0, background:'linear-gradient(90deg, rgba(255,107,0,0.04) 0%, transparent 40%, transparent 60%, rgba(255,107,0,0.04) 100%)', pointerEvents:'none' }} />
+      {STATS.map((s, i) => (
+        <React.Fragment key={i}>
+          <StatItem stat={s} delay={i} />
+          {i < STATS.length - 1 && <div style={{ width:1, background:'var(--border)', alignSelf:'stretch', margin:'1.5rem 0' }} />}
+        </React.Fragment>
+      ))}
     </div>
   );
 }
+
+/* ─── Features Section ────────────────────────────────────────────────────── */
+const FEATURES = [
+  { icon: '📍', title: 'Find Chargers Anywhere', desc: 'Locate nearby charging stations in real-time with live availability across India.', color: '#3B82F6' },
+  { icon: '⚡', title: 'Fast & Reliable Charging', desc: 'Access high-speed chargers and power up quickly with 100% network reliability.', color: '#FF6B00' },
+  { icon: '💳', title: 'Seamless Payments & Tracking', desc: 'Secure payments, detailed session insights and easy billing — all in one tap.', color: '#10B981' },
+  { icon: '🌿', title: 'Drive Green, Live Clean', desc: 'Every charge you take contributes to a cleaner and greener India for everyone.', color: '#8B5CF6' },
+];
+
+export function FeaturesSection() {
+  const rev = useScrollReveal();
+  return (
+    <section id="features" ref={rev.ref} className={`reveal ${rev.visible?'visible':''}`} style={{ ...secStyle('var(--bg)'), textAlign:'center' }}>
+      <div style={{ maxWidth:1100, margin:'0 auto' }}>
+        <span style={tagStyle}>NextCharge App</span>
+        <h2 style={{ ...h2Style, marginBottom:'0.6rem' }}>Everything you need for<br />a seamless charging experience</h2>
+        <p style={{ color:'var(--muted)', maxWidth:520, margin:'0 auto 3rem', lineHeight:1.7, fontSize:'0.95rem' }}>
+          From finding the nearest plug to tracking your carbon savings — every mile is covered.
+        </p>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))', gap:'1.2rem', textAlign:'left' }}>
+          {FEATURES.map((f, i) => <FeatureCard key={f.title} feature={f} delay={i} />)}
+        </div>
+        <div style={{ marginTop:'2.5rem' }}>
+          <a href="#find" onClick={e => { e.preventDefault(); document.getElementById('find')?.scrollIntoView({ behavior:'smooth' }); }}
+            style={{ ...btnBase('ghost', { padding:'0.65rem 1.8rem', fontSize:'0.88rem', textDecoration:'none', borderRadius:50, display:'inline-flex', alignItems:'center', gap:8 }) }}>
+            Explore All Features <span style={{ fontSize:'1.1rem' }}>→</span>
+          </a>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FeatureCard({ feature, delay }) {
+  const [hov, setHov] = useState(false);
+  return (
+    <div
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      className={`reveal visible reveal-delay-${delay + 1}`}
+      style={{
+        background:'var(--surface)',
+        border:`1px solid ${hov ? 'rgba(255,107,0,0.3)' : 'var(--glass-border)'}`,
+        borderRadius:20, padding:'1.8rem 1.5rem',
+        transition:'all 0.3s cubic-bezier(0.23,1,0.32,1)',
+        transform: hov ? 'translateY(-4px)' : 'none',
+        boxShadow: hov ? 'var(--shadow-lg), var(--card-hover-glow)' : 'var(--shadow-sm)',
+        position:'relative', overflow:'hidden', cursor:'default',
+      }}
+    >
+      <div style={{ position:'absolute', top:0, left:0, right:0, height:3, background:`linear-gradient(90deg, ${feature.color}, transparent)`, opacity: hov ? 1 : 0, transition:'opacity 0.3s' }} />
+      <div style={{ width:48, height:48, background:`${feature.color}18`, border:`1px solid ${feature.color}30`, borderRadius:14, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.4rem', marginBottom:'1.1rem' }}>{feature.icon}</div>
+      <h3 style={{ fontSize:'1rem', fontWeight:700, color:'var(--text)', marginBottom:'0.55rem', lineHeight:1.3 }}>{feature.title}</h3>
+      <p style={{ fontSize:'0.84rem', color:'var(--muted)', lineHeight:1.65, margin:0 }}>{feature.desc}</p>
+    </div>
+  );
+}
+
 
 // ─── Visual SoC Graph Canvas Component ───────────────────────────────────────
 function SoCGraph({ socProfile }) {
@@ -1967,58 +2040,302 @@ export function NewsSection() {
 }
 
 const AndroidSvg = () => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M17.6 9.48l1.79-3.1a0.56 0.56 0 0 0-.2-.77 0.57 0.57 0 0 0-.77.2L16.6 8.94A8.7 8.7 0 0 0 12 7.62a8.7 8.7 0 0 0-4.6 1.32L5.58 5.81a0.57 0.57 0 0 0-.77-.2 0.56 0.56 0 0 0-.2.77l1.79 3.1A9.09 9.09 0 0 0 3 17.25h18a9.09 9.09 0 0 0-3.4-7.77zm-10.16 4.59a0.84 0.84 0 1 1 .84-.84 0.84 0 0 1-.84.84zm9.12 0a0.84 0.84 0 1 1 .84-.84 0.84 0 0 1-.84.84z" />
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M17.6 9.48l1.79-3.1a0.56 0.56 0 0 0-.2-.77 0.57 0.57 0 0 0-.77.2L16.6 8.94A8.7 8.7 0 0 0 12 7.62a8.7 8.7 0 0 0-4.6 1.32L5.58 5.81a0.57 0.57 0 0 0-.77-.2 0.56 0.56 0 0 0-.2.77l1.79 3.1A9.09 9.09 0 0 0 3 17.25h18a9.09 9.09 0 0 0-3.4-7.77zm-10.16 4.59a0.84 0.84 0 1 1 .84-.84 0.84 0.84 0 0 1-.84.84zm9.12 0a0.84 0.84 0 1 1 .84-.84 0.84 0.84 0 0 1-.84.84z" />
   </svg>
 );
 
 export function AppSection() {
   const rev = useScrollReveal();
   const [hovApp, setHovApp] = useState(false);
+
+  const appFeatures = [
+    { icon: '🗺️', text: 'Search nearby chargers in real-time' },
+    { icon: '📅', text: 'Book slots up to 7 days in advance' },
+    { icon: '⚡', text: 'One-tap session start via QR scan' },
+    { icon: '📊', text: 'Track kWh, cost & carbon savings' },
+  ];
+
   return (
-    <section id="app" ref={rev.ref} className={`reveal ${rev.visible?'visible':''}`} style={{ ...secStyle('var(--bg-soft)'), textAlign:'center' }}>
-      <div style={tagStyle}>Download the App</div>
-      <h2 style={h2Style}>Charge on the Go</h2>
-      <p style={{ color:'var(--muted)', maxWidth:480, margin:'0.5rem auto 0', lineHeight:1.7, fontSize:'0.95rem' }}>
-        Find nearby stations, start charging with a tap, track your sessions in real-time, and get instant payment receipts — everything you need, right from your phone.
-      </p>
-      <div style={{ display:'flex', gap:'1rem', justifyContent:'center', marginTop:'2.5rem', flexWrap:'wrap' }}>
-        <a href="/nextcharge.apk" download="nextcharge.apk"
-          onMouseEnter={()=>setHovApp(true)} onMouseLeave={()=>setHovApp(false)}
-          style={{ display:'flex', alignItems:'center', gap:14, background: hovApp?'var(--accent-light)':'var(--glass-bg)', border: hovApp?'1px solid var(--glass-border-hover)':'1px solid var(--glass-border)', borderRadius:16, padding:'0.95rem 2.2rem', cursor:'pointer', textDecoration:'none', transition:'all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1)', transform: hovApp?'translateY(-3px)':'translateY(0)', boxShadow: hovApp?'var(--neon-glow), var(--shadow-sm)':'var(--shadow-sm)' }}>
-          <span style={{ color:'var(--text)', display:'flex', alignItems:'center', transform: hovApp?'scale(1.08)':'scale(1)', transition:'all 0.25s' }}><AndroidSvg /></span>
-          <div style={{ textAlign:'left' }}>
-            <small style={{ display:'block', fontSize:'0.65rem', color:'var(--muted)', lineHeight:1.3 }}>Direct APK Download</small>
-            <strong style={{ fontSize:'1rem', color:'var(--text)', letterSpacing:'-0.01em' }}>Download our Android App</strong>
+    <section id="app" ref={rev.ref} className={`reveal ${rev.visible?'visible':''}`} style={secStyle('var(--bg-soft)')}>
+      <div style={{ maxWidth:1100, margin:'0 auto', display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))', gap:'3rem', alignItems:'center' }}>
+        {/* Left */}
+        <div>
+          <span style={tagStyle}>NextCharge App</span>
+          <h2 style={{ ...h2Style, marginBottom:'0.8rem' }}>Your EV journey,<br />all in one app.</h2>
+          <p style={{ color:'var(--muted)', lineHeight:1.75, marginBottom:'1.8rem', fontSize:'0.95rem' }}>
+            Search. Pay. Track. The NextCharge app handles every step of your charging experience — from finding the nearest station to getting your session receipt.
+          </p>
+          <ul style={{ listStyle:'none', padding:0, margin:'0 0 2rem', display:'flex', flexDirection:'column', gap:'0.75rem' }}>
+            {appFeatures.map(f => (
+              <li key={f.text} style={{ display:'flex', alignItems:'center', gap:'0.75rem', fontSize:'0.9rem', color:'var(--text-secondary)' }}>
+                <span style={{ width:32, height:32, background:'rgba(255,107,0,0.1)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'0.9rem', flexShrink:0 }}>{f.icon}</span>
+                {f.text}
+              </li>
+            ))}
+          </ul>
+          <div style={{ display:'flex', gap:'0.9rem', flexWrap:'wrap' }}>
+            <a href="/nextcharge.apk" download="nextcharge.apk"
+              onMouseEnter={() => setHovApp(true)}
+              onMouseLeave={() => setHovApp(false)}
+              style={{
+                display:'flex', alignItems:'center', gap:12,
+                background: hovApp ? 'rgba(255,107,0,0.12)' : 'var(--glass-bg)',
+                border: hovApp ? '1px solid rgba(255,107,0,0.4)' : '1px solid var(--glass-border)',
+                borderRadius:14, padding:'0.85rem 1.6rem',
+                textDecoration:'none', transition:'all 0.25s',
+                transform: hovApp ? 'translateY(-2px)' : 'none',
+                boxShadow: hovApp ? '0 4px 20px rgba(255,107,0,0.2)' : 'var(--shadow-sm)',
+              }}>
+              <span style={{ color: hovApp ? 'var(--orange)' : 'var(--text)', display:'flex', alignItems:'center' }}><AndroidSvg /></span>
+              <div style={{ textAlign:'left' }}>
+                <small style={{ display:'block', fontSize:'0.62rem', color:'var(--muted)', lineHeight:1.3 }}>Direct APK Download</small>
+                <strong style={{ fontSize:'0.95rem', color:'var(--text)', letterSpacing:'-0.01em' }}>Download Android App</strong>
+              </div>
+            </a>
           </div>
-        </a>
+        </div>
+
+        {/* Right: Phone mockup */}
+        <div style={{ display:'flex', justifyContent:'center' }}>
+          <AppPhoneMockup />
+        </div>
       </div>
     </section>
   );
 }
 
-export function Footer() {
+function AppPhoneMockup() {
   return (
-    <footer style={{ padding:'4rem 5% 2rem', background:'var(--bg-soft)', borderTop:'1px solid var(--section-border)' }}>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:'2.5rem', marginBottom:'3rem' }}>
-        <div>
-          <div onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} style={{ fontSize:'1.4rem', fontWeight:800, marginBottom:'1rem', cursor:'pointer' }}>Next<span style={{color:'var(--accent)', textShadow:'var(--accent-text-glow)'}}>Charge</span></div>
-          <p style={{ color:'var(--muted)', fontSize:'0.84rem', lineHeight:1.7 }}>India's most reliable EV charging network.</p>
+    <div style={{ position:'relative', width:260 }}>
+      <div style={{ width:260, borderRadius:36, background:'var(--surface)', border:'1px solid var(--glass-border)', boxShadow:'0 30px 60px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.05)', overflow:'hidden', position:'relative' }}>
+        <div style={{ height:40, background:'var(--bg-alt)', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 20px', fontSize:'0.65rem', color:'var(--muted)', fontWeight:600 }}>
+          <span>9:41</span>
+          <div style={{ width:80, height:8, background:'var(--bg)', borderRadius:10 }} />
+          <span>⚡ 78%</span>
         </div>
-        {[['Network',['Find Stations','Add a Station','Partners','Map']],['Company',['About','Careers','Blog','Press']],['Support',['Help Center','Contact','Privacy','Terms']]].map(([title,links])=>(
-          <div key={title}><div style={{ fontWeight:700, fontSize:'0.84rem', marginBottom:'0.8rem', color:'var(--text)' }}>{title}</div><ul style={{ listStyle:'none', padding:0, margin:0, display:'flex', flexDirection:'column', gap:'0.5rem' }}>{links.map(l=><li key={l}><span style={{ color:'var(--muted)', fontSize:'0.84rem', cursor:'default', transition:'color 0.2s' }}>{l}</span></li>)}</ul></div>
-        ))}
+        <div style={{ background:'linear-gradient(135deg, #FF6B00, #FF8C38)', padding:'1rem 1.2rem 0.8rem' }}>
+          <div style={{ fontSize:'0.68rem', color:'rgba(255,255,255,0.75)', marginBottom:2 }}>Good morning, Arjun ⚡</div>
+          <div style={{ fontSize:'1rem', fontWeight:800, color:'#fff' }}>Find a Charger</div>
+        </div>
+        <div style={{ height:140, background:'var(--bg-alt)', position:'relative', overflow:'hidden' }}>
+          {[30,60,90,120].map(y => <div key={y} style={{ position:'absolute', left:0, right:0, top:y, height:1, background:'var(--border)' }} />)}
+          {[40,80,120,160,200].map(x => <div key={x} style={{ position:'absolute', top:0, bottom:0, left:x, width:1, background:'var(--border)' }} />)}
+          {[{x:70,y:40,c:'#10B981'},{x:140,y:70,c:'#FF6B00'},{x:100,y:105,c:'#10B981'},{x:190,y:45,c:'#EF4444'}].map((p,i) => (
+            <div key={i} style={{ position:'absolute', left:p.x, top:p.y, width:18, height:18, borderRadius:'50% 50% 50% 0', transform:'rotate(-45deg)', background:p.c, border:'2px solid #fff', boxShadow:`0 2px 8px ${p.c}60` }} />
+          ))}
+          <div style={{ position:'absolute', left:120, top:75, width:14, height:14, borderRadius:'50%', background:'#3B82F6', border:'2.5px solid #fff', boxShadow:'0 0 0 6px rgba(59,130,246,0.2)' }} />
+        </div>
+        <div style={{ padding:'0.85rem 1rem', background:'var(--surface)' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+            <div style={{ fontSize:'0.72rem', fontWeight:700, color:'var(--text)' }}>Flame Stone Station</div>
+            <div style={{ fontSize:'0.62rem', color:'#10B981', fontWeight:600, background:'rgba(16,185,129,0.1)', borderRadius:20, padding:'1px 6px' }}>Active</div>
+          </div>
+          <div style={{ display:'flex', gap:'1rem', fontSize:'0.65rem', color:'var(--muted)', marginBottom:8 }}>
+            <span>Energy <strong style={{ color:'var(--orange)' }}>10.6 kWh</strong></span>
+            <span>Cost <strong style={{ color:'var(--text)' }}>₹127.50</strong></span>
+          </div>
+          <div style={{ height:5, background:'var(--border)', borderRadius:3, overflow:'hidden' }}>
+            <div style={{ height:'100%', width:'78%', background:'linear-gradient(90deg, #10B981, #00FF88)', borderRadius:3 }} />
+          </div>
+          <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.6rem', color:'var(--muted)', marginTop:3 }}>
+            <span>SoC: 78%</span>
+            <span style={{ color:'var(--orange)', fontWeight:600 }}>Stop Session</span>
+          </div>
+        </div>
       </div>
-      <div style={{ borderTop:'1px solid var(--glass-border)', paddingTop:'1.5rem', display:'flex', justifyContent:'space-between', flexWrap:'wrap', gap:'1rem' }}>
-        <p style={{ fontSize:'0.78rem', color:'var(--muted-light)' }}>© 2024 NextCharge Technologies Pvt. Ltd.</p>
-        <p style={{ fontSize:'0.78rem', color:'var(--muted-light)' }}>Made in India 🇮🇳</p>
+      <div style={{ position:'absolute', top:-12, right:-20, background:'var(--surface)', border:'1px solid var(--border)', borderRadius:10, padding:'6px 10px', fontSize:'0.65rem', fontWeight:700, color:'var(--orange)', boxShadow:'var(--shadow-md)', animation:'float3 5s ease-in-out infinite' }}>
+        ⚡ 150kW Fast
+      </div>
+      <div style={{ position:'absolute', bottom:-8, left:-20, background:'var(--surface)', border:'1px solid var(--border)', borderRadius:10, padding:'6px 10px', fontSize:'0.65rem', fontWeight:700, color:'#10B981', boxShadow:'var(--shadow-md)', animation:'float1 6s ease-in-out infinite 1s' }}>
+        📍 0.4 km away
+      </div>
+    </div>
+  );
+}
+
+/* ─── Testimonials ─────────────────────────────────────────────────────────── */
+const TESTIMONIALS = [
+  { text: "NextCharge is my go-to app for every road trip. The availability is accurate and booking a slot takes less than a minute.", name: 'Rohit Sharma', role: 'Hyundai Ioniq 5', rating: 5, avatar: 'R' },
+  { text: "Smooth payments, great support and India-wide network. Charging has never been this effortless for daily commutes.", name: 'Neha Varma', role: 'Tata Nexon EV', rating: 5, avatar: 'N' },
+  { text: "I love how NextCharge shows live updates. It saves time and makes my daily drive completely worry-free.", name: 'Arjun Mehta', role: 'MG ZS EV', rating: 5, avatar: 'A' },
+];
+
+export function TestimonialsSection() {
+  const rev = useScrollReveal();
+  const [active, setActive] = useState(0);
+
+  useEffect(() => {
+    const t = setInterval(() => setActive(p => (p + 1) % TESTIMONIALS.length), 4500);
+    return () => clearInterval(t);
+  }, []);
+
+  return (
+    <section ref={rev.ref} className={`reveal ${rev.visible?'visible':''}`} style={{ ...secStyle('var(--bg-soft)'), textAlign:'center' }}>
+      <div style={{ maxWidth:1100, margin:'0 auto' }}>
+        <span style={tagStyle}>Real User Stories</span>
+        <h2 style={h2Style}>Real people. Real experiences.</h2>
+        <p style={{ color:'var(--muted)', maxWidth:480, margin:'0 auto 3rem', lineHeight:1.7, fontSize:'0.93rem' }}>
+          Thousands of EV drivers across India trust NextCharge every single day.
+        </p>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))', gap:'1.2rem', textAlign:'left' }}>
+          {TESTIMONIALS.map((t, i) => (
+            <div
+              key={t.name}
+              onClick={() => setActive(i)}
+              style={{
+                background:'var(--surface)',
+                border:`1px solid ${i === active ? 'rgba(255,107,0,0.3)' : 'var(--glass-border)'}`,
+                borderRadius:20, padding:'1.8rem',
+                cursor:'pointer',
+                transition:'all 0.35s cubic-bezier(0.23,1,0.32,1)',
+                transform: i === active ? 'translateY(-4px) scale(1.02)' : 'none',
+                boxShadow: i === active ? '0 12px 40px rgba(255,107,0,0.12)' : 'var(--shadow-sm)',
+                position:'relative',
+              }}
+            >
+              {i === active && <div style={{ position:'absolute', top:0, left:0, right:0, height:3, background:'linear-gradient(90deg, #FF6B00, #FF8C38)', borderRadius:'20px 20px 0 0' }} />}
+              <div style={{ color:'#F59E0B', fontSize:'0.9rem', letterSpacing:2, marginBottom:'0.8rem' }}>{'★'.repeat(t.rating)}</div>
+              <p style={{ fontSize:'0.88rem', color:'var(--text-secondary)', lineHeight:1.7, marginBottom:'1.2rem', fontStyle:'italic' }}>"{t.text}"</p>
+              <div style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
+                <div style={{ width:38, height:38, borderRadius:'50%', background:'linear-gradient(135deg, #FF6B00, #FF8C38)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:800, fontSize:'0.9rem', color:'#fff', flexShrink:0 }}>{t.avatar}</div>
+                <div>
+                  <div style={{ fontWeight:700, fontSize:'0.88rem', color:'var(--text)' }}>{t.name}</div>
+                  <div style={{ fontSize:'0.72rem', color:'var(--muted)', marginTop:1 }}>{t.role}</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display:'flex', justifyContent:'center', gap:8, marginTop:'2rem' }}>
+          {TESTIMONIALS.map((_, i) => (
+            <button key={i} onClick={() => setActive(i)} style={{ width: active === i ? 24 : 8, height:8, borderRadius:4, border:'none', background: active === i ? 'var(--orange)' : 'var(--border)', cursor:'pointer', transition:'all 0.3s', outline:'none' }} />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ─── CTA Banner ───────────────────────────────────────────────────────────── */
+export function CTABanner() {
+  const rev = useScrollReveal();
+  const { setAuthModal } = useApp();
+  return (
+    <section
+      ref={rev.ref}
+      className={`reveal ${rev.visible?'visible':''}`}
+      style={{ padding:'4.5rem 5%', background:'linear-gradient(135deg, #FF6B00 0%, #FF8C38 50%, #E05A00 100%)', position:'relative', overflow:'hidden', textAlign:'center' }}
+    >
+      <div style={{ position:'absolute', inset:0, backgroundImage:'radial-gradient(circle, rgba(255,255,255,0.08) 1px, transparent 1px)', backgroundSize:'24px 24px', pointerEvents:'none' }} />
+      <div style={{ position:'relative', zIndex:1, maxWidth:700, margin:'0 auto' }}>
+        <div style={{ fontSize:'2rem', marginBottom:'0.5rem' }}>⚡</div>
+        <h2 style={{ fontSize:'clamp(1.6rem,3.5vw,2.4rem)', fontWeight:900, color:'#fff', marginBottom:'0.75rem', letterSpacing:'-0.03em', fontFamily:"'Outfit','Inter',sans-serif" }}>
+          Ready to charge smarter?
+        </h2>
+        <p style={{ color:'rgba(255,255,255,0.88)', maxWidth:480, margin:'0 auto 2rem', lineHeight:1.7, fontSize:'0.95rem' }}>
+          Join millions of EV drivers who trust NextCharge across India for fast, reliable, and affordable charging every single day.
+        </p>
+        <div style={{ display:'flex', gap:'0.9rem', justifyContent:'center', flexWrap:'wrap' }}>
+          <button
+            onClick={() => setAuthModal('signup')}
+            style={{ background:'#fff', color:'#FF6B00', border:'none', borderRadius:50, padding:'0.85rem 2rem', fontWeight:800, fontSize:'0.95rem', fontFamily:'inherit', cursor:'pointer', boxShadow:'0 4px 20px rgba(0,0,0,0.2)', transition:'all 0.22s' }}
+            onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.05)'; e.currentTarget.style.boxShadow = '0 8px 30px rgba(0,0,0,0.3)'; }}
+            onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.2)'; }}
+          >
+            Get Started →
+          </button>
+          <button
+            onClick={() => document.getElementById('find')?.scrollIntoView({ behavior:'smooth' })}
+            style={{ background:'rgba(255,255,255,0.15)', color:'#fff', border:'1.5px solid rgba(255,255,255,0.4)', borderRadius:50, padding:'0.85rem 2rem', fontWeight:700, fontSize:'0.95rem', fontFamily:'inherit', cursor:'pointer', backdropFilter:'blur(8px)', transition:'all 0.22s' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.25)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.15)'; }}
+          >
+            Contact Sales
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ─── Footer ───────────────────────────────────────────────────────────────── */
+export function Footer() {
+  const currentYear = new Date().getFullYear();
+  const footerLinks = [
+    { title: 'Company', links: [['About Us', '#'], ['Careers', '#'], ['Press & Media', '#'], ['Contact Us', '#']] },
+    { title: 'Support', links: [['Help Center', '#'], ['FAQs', '#'], ['Live Chat', '#'], ['Report an Issue', '#']] },
+    { title: 'Legal', links: [['Terms of Service', '#'], ['Privacy Policy', '#'], ['Refund Policy', '#']] },
+    { title: 'Resources', links: [['Blog', '/news'], ['For Business', '#'], ['API Docs', '#']] },
+  ];
+
+  return (
+    <footer style={{ padding:'4.5rem 5% 2rem', background:'var(--bg-soft)', borderTop:'1px solid var(--section-border)' }} aria-label="Site footer">
+      <div style={{ maxWidth:1200, margin:'0 auto' }}>
+        <div style={{ display:'grid', gridTemplateColumns:'minmax(200px,1.4fr) repeat(4,1fr)', gap:'2.5rem', marginBottom:'3rem', flexWrap:'wrap' }}>
+          {/* Brand */}
+          <div>
+            <div onClick={() => window.scrollTo({ top:0, behavior:'smooth' })} style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer', marginBottom:'1rem' }}>
+              <img src="/logo.png" alt="NextCharge" style={{ height:32, width:32, objectFit:'contain', borderRadius:6 }} />
+              <span style={{ fontSize:'1.15rem', fontWeight:800 }}>next<span style={{ color:'var(--orange)' }}>charge</span></span>
+            </div>
+            <p style={{ color:'var(--muted)', fontSize:'0.84rem', lineHeight:1.75, maxWidth:220, marginBottom:'1.5rem' }}>
+              Making EV charging simple, reliable and accessible wherever the road takes you.
+            </p>
+            <div style={{ display:'flex', gap:'0.6rem' }}>
+              {[{label:'Twitter/X',icon:'𝕏'},{label:'Instagram',icon:'◎'},{label:'LinkedIn',icon:'in'},{label:'YouTube',icon:'▶'}].map(s => (
+                <button key={s.label} aria-label={s.label} style={{ width:34, height:34, borderRadius:8, background:'var(--glass-bg)', border:'1px solid var(--glass-border)', color:'var(--muted)', fontSize:'0.8rem', fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.2s', fontFamily:'inherit' }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--orange)'; e.currentTarget.style.color = 'var(--orange)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--glass-border)'; e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.transform = 'none'; }}
+                >{s.icon}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Link columns */}
+          {footerLinks.map(({ title, links }) => (
+            <div key={title}>
+              <div style={{ fontWeight:700, fontSize:'0.8rem', marginBottom:'1rem', color:'var(--text)', textTransform:'uppercase', letterSpacing:'0.08em' }}>{title}</div>
+              <ul style={{ listStyle:'none', padding:0, margin:0, display:'flex', flexDirection:'column', gap:'0.55rem' }}>
+                {links.map(([label, href]) => (
+                  <li key={label}>
+                    <a href={href} style={{ color:'var(--muted)', fontSize:'0.84rem', textDecoration:'none', transition:'color 0.2s' }}
+                      onMouseEnter={e => e.currentTarget.style.color = 'var(--orange)'}
+                      onMouseLeave={e => e.currentTarget.style.color = 'var(--muted)'}
+                    >{label}</a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ borderTop:'1px solid var(--border)', paddingTop:'2rem' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'1.5rem', marginBottom:'1.5rem' }}>
+            <div>
+              <div style={{ fontWeight:700, fontSize:'0.9rem', color:'var(--text)', marginBottom:'0.2rem' }}>Stay Updated</div>
+              <div style={{ fontSize:'0.8rem', color:'var(--muted)' }}>Get the latest updates and offers in your inbox.</div>
+            </div>
+            <form onSubmit={e => e.preventDefault()} style={{ display:'flex', gap:'0.5rem', flexShrink:0 }}>
+              <input type="email" placeholder="Enter your email" aria-label="Subscribe to newsletter"
+                style={{ ...inpStyle, width:210, borderRadius:50, padding:'0.6rem 1.1rem', fontSize:'0.84rem' }} />
+              <button type="submit" style={{ background:'var(--orange)', border:'none', color:'#fff', borderRadius:50, padding:'0.6rem 1.3rem', fontWeight:700, fontSize:'0.84rem', cursor:'pointer', fontFamily:'inherit', flexShrink:0 }}>
+                Subscribe
+              </button>
+            </form>
+          </div>
+          <div style={{ display:'flex', justifyContent:'space-between', flexWrap:'wrap', gap:'0.8rem' }}>
+            <p style={{ fontSize:'0.76rem', color:'var(--muted-light)' }}>© {currentYear} NextCharge Technologies Pvt. Ltd. All rights reserved.</p>
+            <p style={{ fontSize:'0.76rem', color:'var(--muted-light)' }}>Made with ❤️ in India 🇮🇳</p>
+          </div>
+        </div>
       </div>
     </footer>
   );
 }
 
 export function Spin({ s=16 }) {
-  return <div style={{ width:s, height:s, border:`2px solid var(--border)`, borderTopColor:'var(--accent)', borderRadius:'50%', animation:'spin 0.7s linear infinite', flexShrink:0 }} />;
+  return <div style={{ width:s, height:s, border:`2px solid var(--border)`, borderTopColor:'var(--orange)', borderRadius:'50%', animation:'spin 0.7s linear infinite', flexShrink:0 }} />;
 }
 
 export function Toasts() {
