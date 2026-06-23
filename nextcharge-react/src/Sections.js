@@ -569,6 +569,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
   const routePolylineRef = useRef(null);
   const fetchTimeoutRef = useRef(null);
   const clustererRef = useRef(null);
+  const lastSearchedCenterRef = useRef({ lat: 19.0596, lng: 72.8656 });
 
   const handleBook = () => {
     if (!user) { setAuthModal('login'); return; }
@@ -636,6 +637,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
   };
 
   const loadGoogleStations = useCallback(async (lat, lng, radius = 10000) => {
+    lastSearchedCenterRef.current = { lat, lng };
     setGoogleLoading(true);
     try {
       const stations = await fetchNearbyStations(lat, lng, radius);
@@ -934,11 +936,22 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
         const center = map.getCenter();
         const bounds = map.getBounds();
         if (!bounds) return;
+
+        // Check if map moved more than 1km (1000m) from last query center
+        const lastCenter = lastSearchedCenterRef.current;
+        if (lastCenter) {
+          const dist = getDistanceMeters(lastCenter.lat, lastCenter.lng, center.lat(), center.lng());
+          if (dist < 1000) {
+            console.log(`[Map Move] Moved ${Math.round(dist)}m (< 1km). Skipping API call to preserve quota.`);
+            return;
+          }
+        }
+
         const ne = bounds.getNorthEast();
         const diagMeters = getDistanceMeters(center.lat(), center.lng(), ne.lat(), ne.lng());
         const radius = Math.min(Math.max(diagMeters, 2000), 12000);
         loadGoogleStations(center.lat(), center.lng(), Math.round(radius));
-      }, 300);
+      }, 1200);
     };
 
     const idleListener = map.addListener('idle', onMoveEnd);
