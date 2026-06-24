@@ -18,8 +18,5 @@ router.patch('/users/:userId/role',             adminCtrl.changeUserRole);
 router.get('/stations/pending',                 adminCtrl.getPendingStations);
 router.patch('/stations/:stationId/verify',     adminCtrl.verifyStation);
 router.delete('/stations/:stationId',           adminCtrl.deleteStation);
-router.post('/stations/block',                  adminCtrl.blockStation);
-router.get('/stations/blocked',                 adminCtrl.getBlockedStations);
-router.delete('/stations/block/:stationId',     adminCtrl.unblockStation);
 
 module.exports = router;
