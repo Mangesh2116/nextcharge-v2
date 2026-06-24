@@ -71,22 +71,19 @@ export function useTiltCard(maxTilt = 8) {
 
 // Scroll reveal using IntersectionObserver
 export function useScrollReveal(threshold = 0.02) {
+  const ref = useRef(null);
   const [visible, setVisible] = useState(false);
-  const [node, setNode] = useState(null);
-
-  const ref = useCallback((newNode) => {
-    setNode(newNode);
-  }, []);
 
   useEffect(() => {
-    if (!node) return;
+    const el = ref.current;
+    if (!el) return;
     const obs = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) { setVisible(true); obs.unobserve(node); } },
+      ([entry]) => { if (entry.isIntersecting) { setVisible(true); obs.unobserve(el); } },
       { threshold }
     );
-    obs.observe(node);
+    obs.observe(el);
     return () => obs.disconnect();
-  }, [node, threshold]);
+  }, [threshold]);
 
   return { ref, visible };
 }
