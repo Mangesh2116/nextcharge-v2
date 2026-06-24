@@ -19,22 +19,44 @@ const getRedis = () => {
   return client;
 };
 
+const memoryCache = new Map();
+
 // Helper wrappers
 const setCache = async (key, value, ttlSeconds = 300) => {
-  if (!client) return; // 🔥 prevent crash
-
-  await client.setEx(key, ttlSeconds, JSON.stringify(value));
+  if (client) {
+    try {
+      await client.setEx(key, ttlSeconds, JSON.stringify(value));
+      return;
+    } catch (_) {}
+  }
+  const expiresAt = Date.now() + ttlSeconds * 1000;
+  memoryCache.set(key, { value, expiresAt });
 };
 
 const getCache = async (key) => {
-  if (!client) return null; // 🔥 prevent crash
-  const data = await client.get(key);
-  return data ? JSON.parse(data) : null;
+  if (client) {
+    try {
+      const data = await client.get(key);
+      return data ? JSON.parse(data) : null;
+    } catch (_) {}
+  }
+  const cached = memoryCache.get(key);
+  if (!cached) return null;
+  if (Date.now() > cached.expiresAt) {
+    memoryCache.delete(key);
+    return null;
+  }
+  return cached.value;
 };
 
 const deleteCache = async (key) => {
-  if (!client) return; // 🔥 prevent crash
-  await client.del(key);
+  if (client) {
+    try {
+      await client.del(key);
+      return;
+    } catch (_) {}
+  }
+  memoryCache.delete(key);
 };
 
 const deleteCachePattern = async (pattern) => {

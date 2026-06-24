@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const BlockedStation = require('../models/BlockedStation');
+const { getCache, setCache } = require('../config/redis');
 
 const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '';
 const GOOGLE_ROUTES_API_KEY = process.env.GOOGLE_ROUTES_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '';
@@ -47,6 +49,49 @@ function decodePolyline(encoded) {
   return points;
 }
 
+// Helper for OSM fallback
+async function fetchOSMChargingStations(lat, lng, radiusMeters) {
+  const osmQuery = `[out:json][timeout:25];(node["amenity"="charging_station"](around:${radiusMeters},${lat},${lng});way["amenity"="charging_station"](around:${radiusMeters},${lat},${lng});relation["amenity"="charging_station"](around:${radiusMeters},${lat},${lng}););out center;`;
+  
+  const mirrors = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://lz4.overpass-api.de/api/interpreter'
+  ];
+
+  for (const mirror of mirrors) {
+    try {
+      console.log(`[OSM Fallback] Attempting to fetch from OSM mirror: ${mirror}`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+      
+      const response = await fetch(mirror, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: `data=${encodeURIComponent(osmQuery)}`,
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.elements) {
+          console.log(`[OSM Fallback] Successfully fetched ${data.elements.length} stations from OSM mirror ${mirror}`);
+          return data.elements;
+        }
+      } else {
+        console.warn(`[OSM Fallback] OSM mirror ${mirror} returned status ${response.status}`);
+      }
+    } catch (e) {
+      console.error(`[OSM Fallback] OSM mirror ${mirror} failed:`, e.message);
+    }
+  }
+  return [];
+}
+
 /**
  * GET /api/v1/google/nearby
  */
@@ -58,56 +103,122 @@ router.get('/nearby', async (req, res) => {
       return res.status(400).json({ success: false, message: 'lat and lng query parameters are required' });
     }
 
-    if (!GOOGLE_PLACES_API_KEY) {
-      return res.status(500).json({ success: false, message: 'Google Places API key is not configured' });
-    }
-
     const radiusMeters = parseFloat(radius);
-    const response = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location'
-      },
-      body: JSON.stringify({
-        includedTypes: ['electric_vehicle_charging_station'],
-        maxResultCount: 20,
-        locationRestriction: {
-          circle: {
-            center: { latitude: parseFloat(lat), longitude: parseFloat(lng) },
-            radius: radiusMeters
-          }
-        }
-      })
-    });
+    const parsedLat = parseFloat(lat);
+    const parsedLng = parseFloat(lng);
 
-    if (!response.ok) {
-      const text = await response.text();
-      console.error('Google searchNearby API error:', response.status, text);
-      return res.status(response.status).json({ success: false, message: `Google Places API error: ${response.status}` });
+    // Group queries within ~100m by rounding coordinates to 3 decimal places
+    const roundedLat = parsedLat.toFixed(3);
+    const roundedLng = parsedLng.toFixed(3);
+    const cacheKey = `google:nearby:${roundedLat}:${roundedLng}:${radius}`;
+
+    let rawStations = await getCache(cacheKey);
+
+    if (rawStations) {
+      console.log(`[Nearby Cache] Hit for key: ${cacheKey}`);
+    } else {
+      console.log(`[Nearby Cache] Miss for key: ${cacheKey}`);
+      let places = [];
+      let fetchSuccess = false;
+
+      if (GOOGLE_PLACES_API_KEY) {
+        try {
+          const response = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
+              'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location'
+            },
+            body: JSON.stringify({
+              includedTypes: ['electric_vehicle_charging_station'],
+              maxResultCount: 20,
+              locationRestriction: {
+                circle: {
+                  center: { latitude: parsedLat, longitude: parsedLng },
+                  radius: radiusMeters
+                }
+              }
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            places = data.places || [];
+            fetchSuccess = true;
+            console.log(`[Nearby API] Successfully fetched ${places.length} stations from Google Places`);
+          } else {
+            const text = await response.text();
+            console.error(`[Nearby API] Google SearchNearby failed with status ${response.status}: ${text}`);
+          }
+        } catch (err) {
+          console.error('[Nearby API] Error calling Google Places API:', err.message);
+        }
+      } else {
+        console.log('[Nearby API] Google Places API Key is missing. Skipping Google Places search.');
+      }
+
+      if (fetchSuccess) {
+        // Map Google places to standard stations format
+        rawStations = places.map((place, index) => {
+          const pLat = place.location?.latitude || 0;
+          const pLng = place.location?.longitude || 0;
+          return {
+            eLoc: place.id,
+            placeName: place.displayName?.text || 'EV Charging Station',
+            placeAddress: place.formattedAddress || '',
+            latitude: pLat,
+            longitude: pLng,
+            type: 'electric_vehicle_charging_station',
+            keywords: '',
+            orderIndex: index
+          };
+        });
+      } else {
+        console.log('[Nearby API] Falling back to OpenStreetMap Overpass API...');
+        const osmElements = await fetchOSMChargingStations(parsedLat, parsedLng, radiusMeters);
+        rawStations = osmElements.map((element, index) => {
+          const pLat = element.lat || element.center?.lat || 0;
+          const pLng = element.lon || element.center?.lon || 0;
+          const name = element.tags?.name || element.tags?.operator || element.tags?.brand || 'EV Charging Station (OSM)';
+          let address = element.tags?.['addr:full'] || '';
+          if (!address) {
+            const street = element.tags?.['addr:street'] || '';
+            const city = element.tags?.['addr:city'] || '';
+            const postcode = element.tags?.['addr:postcode'] || '';
+            address = [street, city, postcode].filter(Boolean).join(', ') || 'Charging Station Address';
+          }
+          return {
+            eLoc: `osm-${element.type || 'node'}-${element.id}`,
+            placeName: name,
+            placeAddress: address,
+            latitude: pLat,
+            longitude: pLng,
+            type: 'electric_vehicle_charging_station',
+            keywords: '',
+            orderIndex: index
+          };
+        });
+      }
+
+      // Save to cache for 1 hour (3600 seconds)
+      await setCache(cacheKey, rawStations, 3600);
     }
 
-    const data = await response.json();
-    const places = data.places || [];
+    // Retrieve blocked station IDs
+    const blockedIds = await BlockedStation.find().distinct('stationId');
+    const blockedSet = new Set(blockedIds.map(id => String(id)));
 
-    const stations = places.map((place, index) => {
-      const pLat = place.location?.latitude || 0;
-      const pLng = place.location?.longitude || 0;
-      const distance = getDistanceMeters(parseFloat(lat), parseFloat(lng), pLat, pLng);
-
-      return {
-        eLoc: place.id,
-        placeName: place.displayName?.text || 'EV Charging Station',
-        placeAddress: place.formattedAddress || '',
-        latitude: pLat,
-        longitude: pLng,
-        distance,
-        type: 'electric_vehicle_charging_station',
-        keywords: '',
-        orderIndex: index
-      };
-    });
+    // Calculate exact distances from requested coordinates, and filter blocked stations
+    const stations = rawStations
+      .map(s => {
+        const distance = getDistanceMeters(parsedLat, parsedLng, s.latitude, s.longitude);
+        return {
+          ...s,
+          distance
+        };
+      })
+      .filter(s => !blockedSet.has(s.eLoc));
 
     return res.json({
       success: true,
