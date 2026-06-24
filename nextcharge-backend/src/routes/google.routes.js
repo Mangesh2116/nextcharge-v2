@@ -154,23 +154,71 @@ router.post('/route', async (req, res) => {
       }));
     }
 
-    const response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': GOOGLE_ROUTES_API_KEY,
-        'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline'
-      },
-      body: JSON.stringify(payload)
-    });
+    let response;
+    let usingOSMFallback = false;
+    let data;
 
-    if (!response.ok) {
-      const text = await response.text();
-      console.error('Google computeRoutes API error:', response.status, text);
-      return res.status(response.status).json({ success: false, message: `Google Routes API error: ${response.status}` });
+    try {
+      response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': GOOGLE_ROUTES_API_KEY,
+          'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('Google computeRoutes API error:', response.status, text);
+        usingOSMFallback = true;
+      } else {
+        data = await response.json();
+      }
+    } catch (err) {
+      console.error('Google computeRoutes API network error, falling back to OSRM:', err.message);
+      usingOSMFallback = true;
     }
 
-    const data = await response.json();
+    if (usingOSMFallback) {
+      try {
+        console.log('[OSM Routing Fallback] Requesting route from OSRM...');
+        let osmCoords = [`${start.lng},${start.lat}`];
+        if (waypoints && waypoints.length > 0) {
+          waypoints.forEach(w => osmCoords.push(`${w.lng},${w.lat}`));
+        }
+        osmCoords.push(`${destination.lng},${destination.lat}`);
+        const osmCoordsParam = osmCoords.join(';');
+
+        const osmUrl = `https://router.project-osrm.org/route/v1/driving/${osmCoordsParam}?overview=full&geometries=geojson`;
+        console.log(`[OSM Routing Fallback] Fetching: ${osmUrl}`);
+
+        const osmRes = await fetch(osmUrl);
+        if (!osmRes.ok) {
+          throw new Error(`OSRM API error status: ${osmRes.status}`);
+        }
+        const osmData = await osmRes.json();
+        if (osmData.code !== 'Ok' || !osmData.routes || osmData.routes.length === 0) {
+          throw new Error(`OSRM API returned no route: ${osmData.code}`);
+        }
+
+        const route = osmData.routes[0];
+        console.log(`[OSM Routing Fallback] Successfully fetched route via OSRM. Distance: ${route.distance}m, Duration: ${route.duration}s`);
+        return res.json({
+          success: true,
+          data: {
+            geometry: route.geometry,
+            distance: route.distance,
+            duration: route.duration
+          }
+        });
+      } catch (osmErr) {
+        console.error('[OSM Routing Fallback] OSRM routing fallback also failed:', osmErr.message);
+        return res.status(502).json({ success: false, message: `Routing failed: Google Routes API failed, and OSRM fallback failed with: ${osmErr.message}` });
+      }
+    }
+
     if (!data.routes || data.routes.length === 0) {
       return res.status(404).json({ success: false, message: 'No route found' });
     }
