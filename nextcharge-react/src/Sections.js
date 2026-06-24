@@ -2279,13 +2279,9 @@ export function Footer() {
               <img src="/logo.png" alt="NextCharge" style={{ height:32, width:32, objectFit:'contain', borderRadius:6 }} />
               <span style={{ fontSize:'1.15rem', fontWeight:800 }}>next<span style={{ color:'var(--orange)' }}>charge</span></span>
             </div>
-            <p style={{ color:'var(--muted)', fontSize:'0.84rem', lineHeight:1.75, maxWidth:220, marginBottom:'1.2rem' }}>
+            <p style={{ color:'var(--muted)', fontSize:'0.84rem', lineHeight:1.75, maxWidth:220, marginBottom:'1.5rem' }}>
               Making EV charging simple, reliable and accessible wherever the road takes you.
             </p>
-            <div style={{ color:'var(--muted)', fontSize:'0.82rem', marginBottom:'1.5rem', display:'flex', flexDirection:'column', gap:5 }}>
-              <span style={{ display:'flex', alignItems:'center', gap:6 }}>📞 Support: <strong style={{ color:'var(--orange)' }}>Launching Soon</strong></span>
-              <span style={{ display:'flex', alignItems:'center', gap:6 }}>✉️ Email: <a href="mailto:support@nextcharge.in" style={{ color:'var(--text)', textDecoration:'none', fontWeight:600 }}>support@nextcharge.in</a></span>
-            </div>
             <div style={{ display:'flex', gap:'0.6rem' }}>
               {[{label:'Twitter/X',icon:'𝕏'},{label:'Instagram',icon:'◎'},{label:'LinkedIn',icon:'in'},{label:'YouTube',icon:'▶'}].map(s => (
                 <button key={s.label} aria-label={s.label} style={{ width:34, height:34, borderRadius:8, background:'var(--glass-bg)', border:'1px solid var(--glass-border)', color:'var(--muted)', fontSize:'0.8rem', fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.2s', fontFamily:'inherit' }}
