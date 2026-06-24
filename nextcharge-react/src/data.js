@@ -8,10 +8,10 @@ export const STATIONS = [
 ];
 
 export const STATS = [
-  { num: 'Launching Soon', label: 'Charging Points', icon: '⚡' },
-  { num: 'Launching Soon', label: 'Happy Users', icon: '😊' },
-  { num: 'Launching Soon', label: 'Charging Sessions', icon: '🔋' },
-  { num: 'Launching Soon', label: 'CO₂ Saved', icon: '🌿' },
+  { num: '25,000+', label: 'Charging Points', icon: '⚡' },
+  { num: '1M+', label: 'Happy Users', icon: '😊' },
+  { num: '10M+', label: 'Charging Sessions', icon: '🔋' },
+  { num: '48M+ kg', label: 'CO₂ Saved', icon: '🌿' },
 ];
 
 export const HOW_STEPS = [

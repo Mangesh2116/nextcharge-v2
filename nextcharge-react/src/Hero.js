@@ -201,7 +201,7 @@ function EVCarIllustration({ isDark }) {
         isDark={isDark}
       />
       <FloatingStatCard
-        value="Launching Soon"
+        value="4,200+"
         label="Charge Points"
         icon="📍"
         style={{ position: 'absolute', bottom: '12%', left: '-6%', animation: 'float1 7s ease-in-out infinite 1s' }}
@@ -221,12 +221,10 @@ function FloatingStatCard({ value, label, icon, style: extraStyle, isDark }) {
       backdropFilter: 'blur(12px)',
       boxShadow: isDark ? '0 8px 24px rgba(0,0,0,0.4)' : '0 8px 24px rgba(0,0,0,0.12)',
       minWidth: 130,
-      zIndex: 5,
-      whiteSpace: 'nowrap',
       ...extraStyle,
     }}>
       <div style={{ fontSize: '1.1rem', marginBottom: 2 }}>{icon}</div>
-      <div style={{ fontSize: value.length > 8 ? '0.82rem' : '1rem', fontWeight: 800, color: 'var(--orange)', letterSpacing: '-0.02em' }}>{value}</div>
+      <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--orange)', letterSpacing: '-0.02em' }}>{value}</div>
       <div style={{ fontSize: '0.7rem', color: 'var(--muted)', fontWeight: 500 }}>{label}</div>
     </div>
   );

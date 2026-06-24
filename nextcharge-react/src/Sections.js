@@ -2282,15 +2282,9 @@ export function Footer() {
             <p style={{ color:'var(--muted)', fontSize:'0.84rem', lineHeight:1.75, maxWidth:220, marginBottom:'1.2rem' }}>
               Making EV charging simple, reliable and accessible wherever the road takes you.
             </p>
-            <div style={{ color:'var(--muted)', fontSize:'0.82rem', marginBottom:'1.5rem', display:'flex', flexDirection:'column', gap:6 }}>
-              <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
-                <span>📞 Support:</span>
-                <span style={{ paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <a href="tel:+918208746187" style={{ color:'var(--text)', textDecoration:'none', fontWeight:600 }}>+91 8208746187</a>
-                  <a href="tel:+917507902116" style={{ color:'var(--text)', textDecoration:'none', fontWeight:600 }}>+91 7507902116</a>
-                </span>
-              </div>
-              <span style={{ display:'flex', alignItems:'center', gap:6 }}>✉️ Email: <a href="mailto:nextcharge.india@gmail.com" style={{ color:'var(--text)', textDecoration:'none', fontWeight:600 }}>nextcharge.india@gmail.com</a></span>
+            <div style={{ color:'var(--muted)', fontSize:'0.82rem', marginBottom:'1.5rem', display:'flex', flexDirection:'column', gap:5 }}>
+              <span style={{ display:'flex', alignItems:'center', gap:6 }}>📞 Support: <strong style={{ color:'var(--orange)' }}>Launching Soon</strong></span>
+              <span style={{ display:'flex', alignItems:'center', gap:6 }}>✉️ Email: <a href="mailto:support@nextcharge.in" style={{ color:'var(--text)', textDecoration:'none', fontWeight:600 }}>support@nextcharge.in</a></span>
             </div>
             <div style={{ display:'flex', gap:'0.6rem' }}>
               {[{label:'Twitter/X',icon:'𝕏'},{label:'Instagram',icon:'◎'},{label:'LinkedIn',icon:'in'},{label:'YouTube',icon:'▶'}].map(s => (
