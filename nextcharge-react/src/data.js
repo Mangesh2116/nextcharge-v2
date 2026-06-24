@@ -8,10 +8,10 @@ export const STATIONS = [
 ];
 
 export const STATS = [
-  { num: '25,000+', label: 'Charging Points', icon: '⚡' },
-  { num: '1M+', label: 'Happy Users', icon: '😊' },
-  { num: '10M+', label: 'Charging Sessions', icon: '🔋' },
-  { num: '48M+ kg', label: 'CO₂ Saved', icon: '🌿' },
+  { num: '4,200+', label: 'Charging Points' },
+  { num: '120+', label: 'Cities Covered' },
+  { num: '98.2%', label: 'Uptime Rate' },
+  { num: '50,000+', label: 'Charges This Month' },
 ];
 
 export const HOW_STEPS = [

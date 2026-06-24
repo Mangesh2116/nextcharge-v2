@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AppProvider, useApp } from './context';
 import Navbar from './Navbar';
 import Hero from './Hero';
-import { StatsBar, FeaturesSection, MapSection, StationsSection, HowItWorks, BookingSection, NewsSection, AppSection, TestimonialsSection, CTABanner, Footer, Toasts } from './Sections';
+import { StatsBar, MapSection, StationsSection, HowItWorks, BookingSection, NewsSection, AppSection, Footer, Toasts } from './Sections';
 import { AuthModal, BookingModal } from './Modals';
 import ArticleEditorModal from './ArticleEditor';
 import NewsPage from './NewsPage';
@@ -38,7 +38,6 @@ function HomePage() {
     <>
       <ErrorBoundary name="Hero"><Hero /></ErrorBoundary>
       <ErrorBoundary name="Stats Bar"><StatsBar /></ErrorBoundary>
-      <ErrorBoundary name="Features"><FeaturesSection /></ErrorBoundary>
       <ErrorBoundary name="Map Section">
         <MapSection onSearch={handleSearch} apiStations={apiStations} onStationsChange={setNearbyStations} />
       </ErrorBoundary>
@@ -47,10 +46,8 @@ function HomePage() {
       </ErrorBoundary>
       <ErrorBoundary name="How It Works"><HowItWorks /></ErrorBoundary>
       <ErrorBoundary name="Booking Section"><BookingSection /></ErrorBoundary>
-      <ErrorBoundary name="App Section"><AppSection /></ErrorBoundary>
-      <ErrorBoundary name="Testimonials"><TestimonialsSection /></ErrorBoundary>
       <ErrorBoundary name="News Section"><NewsSection /></ErrorBoundary>
-      <ErrorBoundary name="CTA Banner"><CTABanner /></ErrorBoundary>
+      <ErrorBoundary name="App Section"><AppSection /></ErrorBoundary>
       <ErrorBoundary name="Footer"><Footer /></ErrorBoundary>
     </>
   );
@@ -58,7 +55,7 @@ function HomePage() {
 
 function AppContent() {
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)', fontFamily: "'Outfit','Inter', -apple-system, BlinkMacSystemFont, sans-serif", transition: 'background 0.4s ease, color 0.4s ease' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)', fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif", transition: 'background 0.4s ease, color 0.4s ease' }}>
       <Navbar />
       <Routes>
         <Route path="/" element={<HomePage />} />
