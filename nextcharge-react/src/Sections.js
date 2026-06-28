@@ -318,7 +318,9 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
     fetchOSMChargingStations,
     planEVRoute,
     theme,
-    blockStation
+    blockStation,
+    fetchStationReviews,
+    submitStationReview
   } = useApp();
 
   // Core Exploration States
@@ -328,6 +330,14 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
   const [mapplsLoading, setMapplsLoading] = useState(false);
   const [osmStations, setOsmStations] = useState([]);
   const [osmLoading, setOsmLoading] = useState(false);
+
+  // Review States
+  const [reviews, setReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [newReviewForm, setNewReviewForm] = useState({ rating: 5, title: '', body: '' });
+  const [reviewSubmitLoading, setReviewSubmitLoading] = useState(false);
+
+
 
   // Tab State
   const [sidebarTab, setSidebarTab] = useState('explore'); // 'explore' | 'route'
@@ -367,6 +377,18 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
   }, [baseStations, onStationsChange]);
 
   const [activePin, setActivePin] = useState(null);
+
+  useEffect(() => {
+    if (activePin) {
+      setReviewsLoading(true);
+      fetchStationReviews(activePin._id)
+        .then(data => setReviews(data))
+        .catch(() => setReviews([]))
+        .finally(() => setReviewsLoading(false));
+    } else {
+      setReviews([]);
+    }
+  }, [activePin, fetchStationReviews]);
 
   // Autocomplete debouncing hooks
   useEffect(() => {
@@ -438,6 +460,45 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
       setActivePin(null);
     } catch (err) {
       showToast(err.message || 'Failed to remove station', 'error');
+    }
+  };
+
+  const handleReviewSubmit = async (e) => {
+    e.preventDefault();
+    if (!user) {
+      showToast('Please sign in to write a review', 'warning');
+      setAuthModal('login');
+      return;
+    }
+    if (!newReviewForm.body.trim()) {
+      showToast('Please write a comment', 'warning');
+      return;
+    }
+    setReviewSubmitLoading(true);
+    try {
+      const isObjectId = /^[0-9a-fA-F]{24}$/.test(activePin._id);
+      const payload = {
+        rating: newReviewForm.rating,
+        title: newReviewForm.title || 'Review',
+        body: newReviewForm.body,
+        stationId: isObjectId ? activePin._id : undefined,
+        googlePlaceId: !isObjectId ? activePin._id : undefined,
+        stationName: activePin.name,
+        stationAddress: activePin.address
+      };
+      
+      const review = await submitStationReview(payload);
+      showToast('Review submitted successfully!', 'success');
+      
+      setReviews(prev => [
+        { ...review, user: { name: user.name, avatar: user.avatar } },
+        ...prev
+      ]);
+      setNewReviewForm({ rating: 5, title: '', body: '' });
+    } catch (err) {
+      showToast(err.message || 'Failed to submit review', 'error');
+    } finally {
+      setReviewSubmitLoading(false);
     }
   };
 
@@ -1132,6 +1193,97 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
                         </span>
                       ))}
                     </div>
+                  </div>
+
+                  {/* Reviews Section */}
+                  <div style={{ textAlign: 'left', marginTop: '1.8rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text)', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>💬 Reviews & Ratings ({reviews.length})</span>
+                      {reviews.length > 0 && (
+                        <span style={{ fontSize: '0.8rem', color: 'var(--accent)' }}>
+                          ★ {(reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1)} / 5.0
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Write a Review Form */}
+                    <form onSubmit={handleReviewSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: '1rem', marginBottom: '1.2rem' }}>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Share your experience:</div>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--muted)' }}>Rating:</span>
+                        {[1, 2, 3, 4, 5].map(num => (
+                          <button
+                            key={num}
+                            type="button"
+                            onClick={() => setNewReviewForm({ ...newReviewForm, rating: num })}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: newReviewForm.rating >= num ? '#F59E0B' : 'var(--border)',
+                              fontSize: '1.2rem',
+                              cursor: 'pointer',
+                              padding: 0
+                            }}
+                          >
+                            ★
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        style={{ ...inpStyle, padding: '0.5rem 0.8rem', fontSize: '0.8rem' }}
+                        value={newReviewForm.title}
+                        onChange={e => setNewReviewForm({ ...newReviewForm, title: e.target.value })}
+                        placeholder="Review title (e.g. Fast charging!)"
+                      />
+                      <textarea
+                        style={{ ...inpStyle, padding: '0.5rem 0.8rem', fontSize: '0.8rem', minHeight: 60, resize: 'vertical' }}
+                        value={newReviewForm.body}
+                        onChange={e => setNewReviewForm({ ...newReviewForm, body: e.target.value })}
+                        placeholder="Write a comment about this station..."
+                        required
+                      />
+                      <button
+                        type="submit"
+                        disabled={reviewSubmitLoading}
+                        style={btnBase('primary', { padding: '0.5rem 1rem', fontSize: '0.78rem', borderRadius: 8, alignSelf: 'flex-end' })}
+                      >
+                        {reviewSubmitLoading ? 'Submitting...' : 'Submit Review'}
+                      </button>
+                    </form>
+
+                    {/* Reviews List */}
+                    {reviewsLoading ? (
+                      <div style={{ display: 'flex', justifyContent: 'center', padding: '1rem 0' }}>
+                        <Spin />
+                      </div>
+                    ) : reviews.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 220, overflowY: 'auto', paddingRight: 4 }}>
+                        {reviews.map(r => (
+                          <div key={r._id} style={{ borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text)' }}>
+                                {r.user?.name || 'Anonymous User'}
+                              </span>
+                              <span style={{ color: '#F59E0B', fontSize: '0.75rem' }}>
+                                {'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}
+                              </span>
+                            </div>
+                            {r.title && (
+                              <div style={{ fontSize: '0.75rem', fontWeight: 750, color: 'var(--text-secondary)', marginBottom: 2 }}>
+                                {r.title}
+                              </div>
+                            )}
+                            <div style={{ fontSize: '0.75rem', color: 'var(--muted)', lineHeight: 1.3 }}>
+                              {r.body}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ textAlign: 'center', color: 'var(--muted)', fontSize: '0.78rem', padding: '1rem 0' }}>
+                        No reviews yet. Be the first to review this station!
+                      </div>
+                    )}
                   </div>
                 </div>
 

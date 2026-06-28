@@ -186,6 +186,22 @@ export function AppProvider({ children }) {
     return r.data.station;
   }, [token]);
 
+  const fetchStationReviews = useCallback(async (stationId) => {
+    const r = await apiCall(`/reviews/station/${stationId}`);
+    if (!r.ok) return [];
+    return r.data.data || [];
+  }, []);
+
+  const submitStationReview = useCallback(async (payload) => {
+    if (!token) throw new Error('Not authenticated');
+    const r = await apiCall('/reviews', {
+      method: 'POST',
+      body: payload
+    }, token);
+    if (!r.ok) throw new Error(r.error || 'Failed to submit review');
+    return r.data.review;
+  }, [token]);
+
   const fetchNearbyStations = useCallback(async (lat, lng, radius = 5000) => {
     let mapplsStations = [];
     let osmStations = [];
@@ -708,7 +724,7 @@ export function AppProvider({ children }) {
   }, [fetchOSMRoute, fetchOSMChargingStations, searchStations]);
 
   return (
-    <Ctx.Provider value={{ user, token, toasts, showToast, authModal, setAuthModal, bookingModal, setBookingModal, selectedStation, setSelectedStation, backendOnline, login, signup, logout, googleLogin, createBooking, searchStations, fetchNearbyStations, theme, toggleTheme, articleEditorModal, setArticleEditorModal, fetchArticles, fetchArticle, fetchAdminArticles, createArticle, updateArticle, deleteArticle, searchAddressNominatim, fetchOSMChargingStations, fetchOSMRoute, planEVRoute, blockStation, addStation }}>
+    <Ctx.Provider value={{ user, token, toasts, showToast, authModal, setAuthModal, bookingModal, setBookingModal, selectedStation, setSelectedStation, backendOnline, login, signup, logout, googleLogin, createBooking, searchStations, fetchNearbyStations, theme, toggleTheme, articleEditorModal, setArticleEditorModal, fetchArticles, fetchArticle, fetchAdminArticles, createArticle, updateArticle, deleteArticle, searchAddressNominatim, fetchOSMChargingStations, fetchOSMRoute, planEVRoute, blockStation, addStation, fetchStationReviews, submitStationReview }}>
       {children}
     </Ctx.Provider>
   );
