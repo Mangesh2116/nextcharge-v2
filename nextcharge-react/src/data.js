@@ -24,9 +24,19 @@ export const HOW_STEPS = [
 export const CONNECTOR_TYPES = ['CCS2 (DC Fast — 150kW)', 'CHAdeMO (DC Fast)', 'Type 2 AC (7.2kW)', 'Bharat DC-001'];
 export const FILTER_TABS = ['All', 'Fast DC', 'AC', 'CCS2'];
 
-// Use explicit frontend override when available, otherwise use same-host relative API path.
 const normalizeApiUrl = (url) => url?.replace(/\/+$|\/$/, '').replace(/([^:]\/)(\/)+/g, '$1');
-export const API_BASE = process.env.REACT_APP_API_URL ? normalizeApiUrl(process.env.REACT_APP_API_URL) : '/api/v1';
+
+let detectedApiUrl = process.env.REACT_APP_API_URL || '/api/v1';
+
+// Defensive fallback: If running in production (live website) but API URL points to localhost,
+// automatically redirect requests to the production Render backend service.
+if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+  if (detectedApiUrl.includes('localhost') || detectedApiUrl.includes('127.0.0.1') || detectedApiUrl === '/api/v1') {
+    detectedApiUrl = 'https://nextcharge-backend.onrender.com/api/v1';
+  }
+}
+
+export const API_BASE = normalizeApiUrl(detectedApiUrl);
 
 export async function apiCall(endpoint, opts = {}, token = null) {
   const controller = new AbortController();

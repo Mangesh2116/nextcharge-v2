@@ -112,11 +112,11 @@ router.get('/nearby', async (req, res) => {
       radius: radius
     });
 
-    const apiUrl = `https://atlas.mappls.com/api/places/nearby/json?${params.toString()}`;
+    const apiUrl = `https://search.mappls.com/search/places/nearby/json?${params.toString()}`;
 
     const apiRes = await fetch(apiUrl, {
       headers: {
-        'Authorization': `bearer ${token}`,
+        'Authorization': `Bearer ${token}`,
         'accept': 'application/json'
       }
     });
