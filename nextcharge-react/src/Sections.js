@@ -313,9 +313,8 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
     user, 
     setAuthModal, 
     showToast, 
-    fetchNearbyStations,
+    fetchStationsInBounds,
     searchAddressNominatim,
-    fetchOSMChargingStations,
     planEVRoute,
     theme,
     blockStation,
@@ -326,10 +325,8 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
   // Core Exploration States
   const [query, setQuery] = useState('');
   const [searchLoading, setSearchLoading] = useState(false);
-  const [mapplsStations, setMapplsStations] = useState([]);
-  const [mapplsLoading, setMapplsLoading] = useState(false);
-  const [osmStations, setOsmStations] = useState([]);
-  const [osmLoading, setOsmLoading] = useState(false);
+  const [boundsStations, setBoundsStations] = useState([]);
+  const [boundsLoading, setBoundsLoading] = useState(false);
 
   // Review States
   const [reviews, setReviews] = useState([]);
@@ -364,10 +361,9 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
 
   // Active Station Pin
   const baseStations = useMemo(() => [
-    ...osmStations, 
-    ...mapplsStations, 
+    ...boundsStations, 
     ...apiStations
-  ], [osmStations, mapplsStations, apiStations]);
+  ], [boundsStations, apiStations]);
   const finalCandidates = baseStations;
 
   useEffect(() => {
@@ -455,8 +451,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
     try {
       await blockStation(activePin._id, 'Fake or inaccurate details reported by admin');
       showToast(`Station "${activePin.name}" blocked successfully and hidden.`, 'success');
-      setMapplsStations(prev => prev.filter(s => s._id !== activePin._id));
-      setOsmStations(prev => prev.filter(s => s._id !== activePin._id));
+      setBoundsStations(prev => prev.filter(s => s._id !== activePin._id));
       setActivePin(null);
     } catch (err) {
       showToast(err.message || 'Failed to remove station', 'error');
@@ -502,29 +497,22 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
     }
   };
 
-  const loadMapplsStations = useCallback(async (lat, lng, radius = 10000) => {
-    setMapplsLoading(true);
+  const loadStationsForBounds = useCallback(async (mapBounds, zoom) => {
+    setBoundsLoading(true);
     try {
-      const stations = await fetchNearbyStations(lat, lng, radius);
-      setMapplsStations(stations || []);
+      const south = mapBounds.getSouthWest().lat;
+      const west = mapBounds.getSouthWest().lng;
+      const north = mapBounds.getNorthEast().lat;
+      const east = mapBounds.getNorthEast().lng;
+      
+      const stations = await fetchStationsInBounds({ south, west, north, east, zoom });
+      setBoundsStations(stations || []);
     } catch (e) {
-      console.warn('Mappls fetch failed');
+      console.warn('Fetch stations for bounds failed:', e);
     } finally {
-      setMapplsLoading(false);
+      setBoundsLoading(false);
     }
-  }, [fetchNearbyStations]);
-
-  const loadOSMStations = useCallback(async (lat, lng, radius = 10000) => {
-    setOsmLoading(true);
-    try {
-      const stations = await fetchOSMChargingStations({ lat, lng, radius });
-      setOsmStations(stations || []);
-    } catch (e) {
-      console.warn('OSM Overpass fetch failed');
-    } finally {
-      setOsmLoading(false);
-    }
-  }, [fetchOSMChargingStations]);
+  }, [fetchStationsInBounds]);
 
   // MapLibre is always ready (no external script to wait for)
   useEffect(() => {
@@ -541,13 +529,13 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
         const { latitude, longitude } = position.coords;
         setUserLoc({ lat: latitude, lng: longitude });
 
-        loadMapplsStations(latitude, longitude, 10000);
-        loadOSMStations(latitude, longitude, 10000);
-
         if (mapInstanceRef.current) {
           if (zoomIn) {
             mapInstanceRef.current.flyTo({ center: [longitude, latitude], zoom: 14 });
+          } else {
+            mapInstanceRef.current.setCenter([longitude, latitude]);
           }
+        }
 
           if (userLocMarkerRef.current) {
             userLocMarkerRef.current.setLngLat([longitude, latitude]);
@@ -692,45 +680,140 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
       return true;
     });
 
-    filtered.forEach(s => {
-      const active = activePin && activePin._id === s._id;
-      const el = svgToElement(getMarkerSvg(s.status, active), 36, 42);
+    const zoom = mapInstanceRef.current.getZoom();
+    
+    // Apply client-side distance grid clustering at zoom levels < 12
+    let displayCandidates = [];
+    if (zoom >= 12 || sidebarTab === 'route') {
+      displayCandidates = filtered.map(s => ({ ...s, isCluster: false }));
+    } else {
+      const gridSize = 360 / Math.pow(2, zoom) * 0.12;
+      const visited = new Set();
+      
+      for (let i = 0; i < filtered.length; i++) {
+        if (visited.has(i)) continue;
+        
+        const p1 = filtered[i];
+        const cluster = {
+          isCluster: true,
+          _id: `cluster-${zoom}-${i}`,
+          lat: p1.lat,
+          lng: p1.lng,
+          points: [p1]
+        };
+        
+        visited.add(i);
+        
+        for (let j = i + 1; j < filtered.length; j++) {
+          if (visited.has(j)) continue;
+          
+          const p2 = filtered[j];
+          const latDiff = Math.abs(p1.lat - p2.lat);
+          const lngDiff = Math.abs(p1.lng - p2.lng);
+          
+          if (latDiff < gridSize && lngDiff < gridSize) {
+            cluster.points.push(p2);
+            visited.add(j);
+          }
+        }
+        
+        if (cluster.points.length > 1) {
+          let latSum = 0, lngSum = 0;
+          cluster.points.forEach(p => {
+            latSum += p.lat;
+            lngSum += p.lng;
+          });
+          cluster.lat = latSum / cluster.points.length;
+          cluster.lng = lngSum / cluster.points.length;
+          displayCandidates.push(cluster);
+        } else {
+          displayCandidates.push({ ...p1, isCluster: false });
+        }
+      }
+    }
 
-      const popupContent = `
-        <div style="font-family: 'Inter', sans-serif; padding: 4px; min-width: 180px; color: #0F172A;">
-          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
-            <span style="font-size: 14px;">${s.icon || '⚡'}</span>
-            <strong style="color: #0F172A; font-size: 0.88rem;">${s.name}</strong>
+    displayCandidates.forEach(s => {
+      if (!s.isCluster) {
+        const active = activePin && activePin._id === s._id;
+        const el = svgToElement(getMarkerSvg(s.status, active), 36, 42);
+
+        const popupContent = `
+          <div style="font-family: 'Inter', sans-serif; padding: 4px; min-width: 180px; color: #0F172A;">
+            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+              <span style="font-size: 14px;">${s.icon || '⚡'}</span>
+              <strong style="color: #0F172A; font-size: 0.88rem;">${s.name}</strong>
+            </div>
+            <div style="font-size: 0.72rem; color: #64748B; margin-bottom: 6px;">📍 ${s.address}</div>
+            <div style="display: flex; gap: 6px; font-size: 0.68rem; margin-bottom: 4px;">
+              <span style="background: ${s.status === 'available' ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)'}; color: ${s.status === 'available' ? '#059669' : '#D97706'}; padding: 1px 5px; border-radius: 4px; font-weight: 700;">
+                ${s.status === 'available' ? 'Available' : s.status === 'busy' ? 'Busy' : 'Offline'}
+              </span>
+              <span style="background: #F1F5F9; color: #334155; padding: 1px 5px; border-radius: 4px; font-weight: 600;">
+                ⚡ ${s.maxSpeed || '50 kW'}
+              </span>
+            </div>
+            <div style="font-size: 0.60rem; color: #94A3B8; margin-top: 4px; font-weight: 500;">Source: ${s._source === 'mappls' ? 'Mappls' : s._source === 'osm' ? 'OpenStreetMap' : 'NextCharge'} Network</div>
           </div>
-          <div style="font-size: 0.72rem; color: #64748B; margin-bottom: 6px;">📍 ${s.address}</div>
-          <div style="display: flex; gap: 6px; font-size: 0.68rem; margin-bottom: 4px;">
-            <span style="background: ${s.status === 'available' ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)'}; color: ${s.status === 'available' ? '#059669' : '#D97706'}; padding: 1px 5px; border-radius: 4px; font-weight: 700;">
-              ${s.status === 'available' ? 'Available' : s.status === 'busy' ? 'Busy' : 'Offline'}
-            </span>
-            <span style="background: #F1F5F9; color: #334155; padding: 1px 5px; border-radius: 4px; font-weight: 600;">
-              ⚡ ${s.maxSpeed || '50 kW'}
-            </span>
-          </div>
-          <div style="font-size: 0.60rem; color: #94A3B8; margin-top: 4px; font-weight: 500;">Source: ${s._source === 'mappls' ? 'Mappls' : 'NextCharge'} Network</div>
-        </div>
-      `;
+        `;
 
-      const popup = new maplibregl.Popup({ offset: [0, -42], closeButton: false })
-        .setHTML(popupContent);
+        const popup = new maplibregl.Popup({ offset: [0, -42], closeButton: false })
+          .setHTML(popupContent);
 
-      const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
-        .setLngLat([s.lng, s.lat])
-        .setPopup(popup)
-        .addTo(mapInstanceRef.current);
+        const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+          .setLngLat([s.lng, s.lat])
+          .setPopup(popup)
+          .addTo(mapInstanceRef.current);
 
-      el.addEventListener('click', () => {
-        setActivePin(s);
-        mapInstanceRef.current.panTo([s.lng, s.lat]);
-      });
+        el.addEventListener('mouseenter', () => marker.togglePopup());
+        el.addEventListener('mouseleave', () => marker.togglePopup());
 
-      markersGroupRef.current.push(marker);
+        el.addEventListener('click', () => {
+          setActivePin(s);
+          setSelectedStation(s);
+          mapInstanceRef.current.panTo([s.lng, s.lat]);
+        });
+
+        markersGroupRef.current.push(marker);
+      } else {
+        const el = document.createElement('div');
+        el.style.width = '36px';
+        el.style.height = '36px';
+        el.style.background = 'var(--accent, #00FF88)';
+        el.style.color = '#0A0E17';
+        el.style.borderRadius = '50%';
+        el.style.display = 'flex';
+        el.style.alignItems = 'center';
+        el.style.justifyContent = 'center';
+        el.style.fontWeight = 'bold';
+        el.style.fontSize = '0.85rem';
+        el.style.border = '2.5px solid #F1F5F9';
+        el.style.boxShadow = 'var(--shadow-md)';
+        el.innerText = s.points.length;
+        el.style.cursor = 'pointer';
+        el.style.transition = 'transform 0.15s ease-in-out';
+        
+        el.addEventListener('mouseenter', () => {
+          el.style.transform = 'scale(1.1)';
+        });
+        el.addEventListener('mouseleave', () => {
+          el.style.transform = 'scale(1)';
+        });
+
+        el.addEventListener('click', () => {
+          mapInstanceRef.current.flyTo({
+            center: [s.lng, s.lat],
+            zoom: Math.min(mapInstanceRef.current.getZoom() + 2, 16)
+          });
+        });
+
+        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+          .setLngLat([s.lng, s.lat])
+          .addTo(mapInstanceRef.current);
+
+        markersGroupRef.current.push(marker);
+      }
     });
-  }, [filter, activePin, finalCandidates, sidebarTab, routeData, mapLoaded]);
+  }, [filter, activePin, finalCandidates, sidebarTab, routeData, mapLoaded, setSelectedStation]);
 
   // Map Initialization Effect
   useEffect(() => {
@@ -750,8 +833,10 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
 
     map.on('load', () => {
       renderMarkers();
-      loadMapplsStations(19.0596, 72.8656, 10000);
-      loadOSMStations(19.0596, 72.8656, 10000);
+      const bounds = map.getBounds();
+      if (bounds) {
+        loadStationsForBounds(bounds, map.getZoom());
+      }
       locateUser(false);
     });
 
@@ -759,14 +844,9 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
       if (sidebarTab === 'route' && routeData) return;
       clearTimeout(fetchTimeoutRef.current);
       fetchTimeoutRef.current = setTimeout(() => {
-        const center = map.getCenter();
         const bounds = map.getBounds();
         if (!bounds) return;
-        const ne = bounds.getNorthEast();
-        const diagMeters = getDistanceMeters(center.lat, center.lng, ne.lat, ne.lng);
-        const radius = Math.min(Math.max(diagMeters, 2000), 50000);
-        loadMapplsStations(center.lat, center.lng, Math.round(radius));
-        loadOSMStations(center.lat, center.lng, Math.round(radius));
+        loadStationsForBounds(bounds, map.getZoom());
       }, 300);
     };
 
@@ -782,7 +862,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
       map.remove();
       mapInstanceRef.current = null;
     };
-  }, [mapLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mapLoaded, loadStationsForBounds]);
 
   // Route Polyline Draw Effect
   useEffect(() => {
@@ -857,20 +937,16 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
     if (!queryText.trim()) return;
     setSearchLoading(true);
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(queryText)}&countrycodes=in`);
-      const data = await res.json();
-      if (data && data.length > 0) {
-        const { lat, lon, display_name } = data[0];
-        const targetLat = parseFloat(lat);
-        const targetLng = parseFloat(lon);
+      const suggestions = await searchAddressNominatim(queryText);
+      if (suggestions && suggestions.length > 0) {
+        const place = suggestions[0];
+        const targetLat = parseFloat(place.lat);
+        const targetLng = parseFloat(place.lng);
 
         if (mapInstanceRef.current) {
           mapInstanceRef.current.flyTo({ center: [targetLng, targetLat], zoom: 12.5 });
         }
-
-        await loadMapplsStations(targetLat, targetLng, 10000);
-        await loadOSMStations(targetLat, targetLng, 10000);
-        showToast(`Showing chargers near ${display_name.split(',')[0]}`, 'success');
+        showToast(`Showing chargers near ${place.name.split(',')[0]}`, 'success');
       } else {
         showToast('Location not found in India', 'warning');
       }
@@ -889,9 +965,10 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
 
   const handleRefreshStations = () => {
     if (!mapInstanceRef.current) return;
-    const center = mapInstanceRef.current.getCenter();
-    loadMapplsStations(center.lat, center.lng, 10000);
-    loadOSMStations(center.lat, center.lng, 10000);
+    const bounds = mapInstanceRef.current.getBounds();
+    if (bounds) {
+      loadStationsForBounds(bounds, mapInstanceRef.current.getZoom());
+    }
     showToast('Refreshing nearby chargers...', 'info');
   };
 
@@ -1018,7 +1095,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
                 color: 'var(--text)',
                 transition: 'all 0.2s ease-in-out',
                 outline: 'none',
-                animation: (mapplsLoading || osmLoading) ? 'spin 1s linear infinite' : 'none'
+                animation: (boundsLoading || searchLoading) ? 'spin 1s linear infinite' : 'none'
               }}
               onMouseEnter={e => {
                 e.currentTarget.style.transform = 'scale(1.06)';
@@ -1037,7 +1114,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
           </div>
 
           {/* OSM / Mappls Loading Indicator */}
-          {(mapplsLoading || osmLoading) && (
+          {boundsLoading && (
             <div style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', zIndex: 1000, background: 'rgba(15,23,42,0.9)', backdropFilter: 'blur(10px)', padding: '6px 16px', borderRadius: 20, border: '1px solid var(--border-accent)', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 600 }}>
               <div style={{ width: 14, height: 14, border: '2px solid var(--border)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
               Loading live chargers...

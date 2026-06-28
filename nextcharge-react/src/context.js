@@ -335,6 +335,59 @@ export function AppProvider({ children }) {
     return merged;
   }, []);
 
+  const fetchStationsInBounds = useCallback(async (params) => {
+    const { south, west, north, east, zoom } = params;
+    try {
+      const ep = `/map/bounds?south=${south}&west=${west}&north=${north}&east=${east}&zoom=${zoom}`;
+      const r = await apiCall(ep);
+      if (r.ok && r.data?.data) {
+        return r.data.data.map((place, i) => {
+          const text = `${place.placeName} ${place.keywords || ''}`.toLowerCase();
+          const connectors = [];
+          if (text.includes('ccs') || text.includes('dc fast') || text.includes('combo')) connectors.push('CCS2');
+          if (text.includes('chademo')) connectors.push('CHAdeMO');
+          if (text.includes('type 2') || text.includes('type2') || text.includes('ac')) connectors.push('Type 2 AC');
+          if (text.includes('bharat') || text.includes('gbt')) connectors.push('Bharat DC');
+          if (connectors.length === 0) connectors.push('CCS2', 'Type 2 AC');
+
+          let maxSpeed = '50 kW';
+          if (text.includes('fast') || text.includes('dc')) maxSpeed = '60 kW';
+          if (text.includes('supercharger') || text.includes('ultra') || text.includes('120kw') || text.includes('150kw')) maxSpeed = '150 kW';
+          if (text.includes('slow') || (text.includes('ac') && !text.includes('dc'))) maxSpeed = '7.2 kW';
+
+          let icon = '⚡';
+          if (text.includes('tata')) icon = '🔋';
+          else if (text.includes('ather')) icon = '🛵';
+          else if (text.includes('bpcl') || text.includes('iocl') || text.includes('hpcl')) icon = '⛽';
+          else if (text.includes('reliance') || text.includes('jio')) icon = '🏪';
+          else if (text.includes('mg') || text.includes('hyundai') || text.includes('mercedes') || text.includes('audi')) icon = '🚗';
+          else if (text.includes('chargezone') || text.includes('statiq') || text.includes('fortum') || text.includes('bolt')) icon = '🔌';
+
+          return {
+            _id: place.eLoc || `station_${i}`,
+            icon,
+            name: place.placeName || 'EV Charging Station',
+            address: place.placeAddress || '',
+            distance: place.distance != null ? (place.distance / 1000).toFixed(1) + ' km' : '—',
+            portsOpen: '—',
+            maxSpeed,
+            price: '₹15/kWh',
+            connectors,
+            status: 'available',
+            lat: place.latitude,
+            lng: place.longitude,
+            mapPos: null,
+            _source: place._source || 'mappls'
+          };
+        });
+      }
+      return [];
+    } catch (err) {
+      console.error('fetchStationsInBounds error:', err);
+      return [];
+    }
+  }, []);
+
   // ─── Nominatim Address Search ───────────────────────────────────────────────
   const searchAddressNominatim = useCallback(async (queryText) => {
     if (!queryText?.trim()) return [];
@@ -724,7 +777,7 @@ export function AppProvider({ children }) {
   }, [fetchOSMRoute, fetchOSMChargingStations, searchStations]);
 
   return (
-    <Ctx.Provider value={{ user, token, toasts, showToast, authModal, setAuthModal, bookingModal, setBookingModal, selectedStation, setSelectedStation, backendOnline, login, signup, logout, googleLogin, createBooking, searchStations, fetchNearbyStations, theme, toggleTheme, articleEditorModal, setArticleEditorModal, fetchArticles, fetchArticle, fetchAdminArticles, createArticle, updateArticle, deleteArticle, searchAddressNominatim, fetchOSMChargingStations, fetchOSMRoute, planEVRoute, blockStation, addStation, fetchStationReviews, submitStationReview }}>
+    <Ctx.Provider value={{ user, token, toasts, showToast, authModal, setAuthModal, bookingModal, setBookingModal, selectedStation, setSelectedStation, backendOnline, login, signup, logout, googleLogin, createBooking, searchStations, fetchNearbyStations, fetchStationsInBounds, theme, toggleTheme, articleEditorModal, setArticleEditorModal, fetchArticles, fetchArticle, fetchAdminArticles, createArticle, updateArticle, deleteArticle, searchAddressNominatim, fetchOSMChargingStations, fetchOSMRoute, planEVRoute, blockStation, addStation, fetchStationReviews, submitStationReview }}>
       {children}
     </Ctx.Provider>
   );
