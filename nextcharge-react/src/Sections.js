@@ -508,7 +508,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
       const stations = await fetchNearbyStations(lat, lng, radius);
       setMapplsStations(stations || []);
     } catch (e) {
-      console.warn('Google Places fetch failed');
+      console.warn('Mappls fetch failed');
     } finally {
       setMapplsLoading(false);
     }
@@ -711,7 +711,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
               ⚡ ${s.maxSpeed || '50 kW'}
             </span>
           </div>
-          <div style="font-size: 0.60rem; color: #94A3B8; margin-top: 4px; font-weight: 500;">Source: ${s._source === 'google' ? 'Google Places' : 'NextCharge'} Network</div>
+          <div style="font-size: 0.60rem; color: #94A3B8; margin-top: 4px; font-weight: 500;">Source: ${s._source === 'mappls' ? 'Mappls' : 'NextCharge'} Network</div>
         </div>
       `;
 

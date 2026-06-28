@@ -249,12 +249,12 @@ export function AppProvider({ children }) {
             lat: place.latitude,
             lng: place.longitude,
             mapPos: null,
-            _source: 'google'
+            _source: 'mappls'
           };
         });
       }
     } catch (err) {
-      console.error('Google Places nearby fetch failed:', err);
+      console.error('Mappls nearby fetch failed:', err);
     }
 
     // 2. Fetch from OSM via backend
