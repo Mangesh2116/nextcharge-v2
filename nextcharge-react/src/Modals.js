@@ -6,7 +6,7 @@ import { btnBase } from './Navbar';
 const inpStyle = { width:'100%', background:'var(--glass-bg)', border:'1.5px solid var(--input-border)', borderRadius:12, padding:'0.75rem 1rem', color:'var(--text)', fontFamily:'inherit', fontSize:'0.9rem', outline:'none', boxSizing:'border-box', transition:'border-color 0.2s, box-shadow 0.2s' };
 
 export function AuthModal() {
-  const { authModal, setAuthModal, login, signup, googleLogin, showToast } = useApp();
+  const { authModal, setAuthModal, login, signup, googleLogin, showToast, addStation } = useApp();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState({ emailOrPhone:'', password:'', name:'', email:'', phone:'' });
@@ -22,6 +22,80 @@ export function AuthModal() {
     { id: 'u3', name: 'Arjun Sharma', email: 'admin@nextcharge.in', phone: '9876543210', role: 'admin', status: 'Active' },
     { id: 'u4', name: 'Karan Malhotra', email: 'karan@example.com', phone: '9876543213', role: 'user', status: 'Deactivated' }
   ]);
+
+  const [newStation, setNewStation] = useState({
+    name: '',
+    network: 'NextCharge',
+    address: { line1: '', city: '', state: '', pincode: '' },
+    coordinates: { lng: '', lat: '' },
+    connectors: []
+  });
+
+  const [newConnector, setNewConnector] = useState({
+    id: 'C001',
+    type: 'CCS2',
+    powerKw: 50,
+    currentType: 'DC',
+    pricePerKwh: 15
+  });
+
+  const handleAddConnector = () => {
+    if (!newConnector.id) return;
+    setNewStation(prev => ({
+      ...prev,
+      connectors: [...prev.connectors, {
+        ...newConnector,
+        currentType: ['CCS2', 'CHAdeMO', 'BharatDC', 'GBT'].includes(newConnector.type) ? 'DC' : 'AC'
+      }]
+    }));
+    const match = newConnector.id.match(/^(\D+)(\d+)$/);
+    if (match) {
+      const prefix = match[1];
+      const num = parseInt(match[2]) + 1;
+      setNewConnector({
+        ...newConnector,
+        id: prefix + String(num).padStart(match[2].length, '0')
+      });
+    }
+  };
+
+  const handleAddStationSubmit = async (e) => {
+    e.preventDefault();
+    if (newStation.connectors.length === 0) {
+      showToast('Please add at least one connector', 'warning');
+      return;
+    }
+    setLoading(true);
+    try {
+      const payload = {
+        name: newStation.name,
+        network: newStation.network,
+        address: newStation.address,
+        location: {
+          type: 'Point',
+          coordinates: [parseFloat(newStation.coordinates.lng), parseFloat(newStation.coordinates.lat)]
+        },
+        connectors: newStation.connectors,
+        isVerified: true
+      };
+      
+      await addStation(payload);
+      showToast(`Station "${newStation.name}" created successfully!`, 'success');
+      
+      setNewStation({
+        name: '',
+        network: 'NextCharge',
+        address: { line1: '', city: '', state: '', pincode: '' },
+        coordinates: { lng: '', lat: '' },
+        connectors: []
+      });
+      setAuthModal(null);
+    } catch (err) {
+      showToast(err.message || 'Failed to create station', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleGoogleResponse = async (response) => {
     setLoading(true);
@@ -127,7 +201,7 @@ export function AuthModal() {
 
           {/* Navigation Tabs */}
           <div style={{ display:'flex', gap:10, marginBottom:'1.5rem', background:'var(--bg-soft)', padding:4, borderRadius:12, border:'1px solid var(--border)' }}>
-            {[['overview', '📈 Systems Overview'], ['stations', '🔌 Pending Verification'], ['users', '👥 Manage Users']].map(([t, label]) => {
+            {[['overview', '📈 Systems Overview'], ['stations', '🔌 Pending Verification'], ['users', '👥 Manage Users'], ['add_station', '➕ Add Station']].map(([t, label]) => {
               const act = adminTab === t;
               return (
                 <button
@@ -272,6 +346,103 @@ export function AuthModal() {
                   </div>
                 ))}
               </div>
+            )}
+
+            {adminTab === 'add_station' && (
+              <form onSubmit={handleAddStationSubmit} style={{ display:'flex', flexDirection:'column', gap:'1rem', textAlign:'left', paddingBottom:'1.5rem' }}>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                  <div>
+                    <label style={{ fontSize:'0.75rem', color:'var(--muted)', fontWeight:600, display:'block', marginBottom:4 }}>Station Name</label>
+                    <input style={inpStyle} required value={newStation.name} onChange={e=>setNewStation({...newStation, name:e.target.value})} placeholder="e.g. Tata Power Fast Charger" />
+                  </div>
+                  <div>
+                    <label style={{ fontSize:'0.75rem', color:'var(--muted)', fontWeight:600, display:'block', marginBottom:4 }}>Network</label>
+                    <select style={{ ...inpStyle, height: '42px' }} value={newStation.network} onChange={e=>setNewStation({...newStation, network:e.target.value})}>
+                      {['TataPower', 'Ather', 'BPCL', 'ChargeZone', 'Reliance', 'Fortum', 'MG', 'Independent', 'NextCharge'].map(n => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr', gap:10 }}>
+                  <div>
+                    <label style={{ fontSize:'0.75rem', color:'var(--muted)', fontWeight:600, display:'block', marginBottom:4 }}>Address Line 1</label>
+                    <input style={inpStyle} required value={newStation.address.line1} onChange={e=>setNewStation({...newStation, address:{...newStation.address, line1:e.target.value}})} placeholder="e.g. Opp Oberoi Mall" />
+                  </div>
+                  <div>
+                    <label style={{ fontSize:'0.75rem', color:'var(--muted)', fontWeight:600, display:'block', marginBottom:4 }}>City</label>
+                    <input style={inpStyle} required value={newStation.address.city} onChange={e=>setNewStation({...newStation, address:{...newStation.address, city:e.target.value}})} placeholder="Mumbai" />
+                  </div>
+                  <div>
+                    <label style={{ fontSize:'0.75rem', color:'var(--muted)', fontWeight:600, display:'block', marginBottom:4 }}>State</label>
+                    <input style={inpStyle} required value={newStation.address.state} onChange={e=>setNewStation({...newStation, address:{...newStation.address, state:e.target.value}})} placeholder="Maharashtra" />
+                  </div>
+                  <div>
+                    <label style={{ fontSize:'0.75rem', color:'var(--muted)', fontWeight:600, display:'block', marginBottom:4 }}>Pincode</label>
+                    <input style={inpStyle} required pattern="\d{6}" value={newStation.address.pincode} onChange={e=>setNewStation({...newStation, address:{...newStation.address, pincode:e.target.value}})} placeholder="400097" />
+                  </div>
+                </div>
+
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                  <div>
+                    <label style={{ fontSize:'0.75rem', color:'var(--muted)', fontWeight:600, display:'block', marginBottom:4 }}>Latitude (Coordinates)</label>
+                    <input style={inpStyle} type="number" step="any" required value={newStation.coordinates.lat} onChange={e=>setNewStation({...newStation, coordinates:{...newStation.coordinates, lat:e.target.value}})} placeholder="e.g. 19.1630" />
+                  </div>
+                  <div>
+                    <label style={{ fontSize:'0.75rem', color:'var(--muted)', fontWeight:600, display:'block', marginBottom:4 }}>Longitude (Coordinates)</label>
+                    <input style={inpStyle} type="number" step="any" required value={newStation.coordinates.lng} onChange={e=>setNewStation({...newStation, coordinates:{...newStation.coordinates, lng:e.target.value}})} placeholder="e.g. 72.8560" />
+                  </div>
+                </div>
+
+                {/* Add Connectors Section */}
+                <div style={{ background:'var(--bg-soft)', border:'1px solid var(--border)', borderRadius:16, padding:'1rem' }}>
+                  <h4 style={{ fontSize:'0.82rem', fontWeight:800, color:'var(--text)', marginBottom:'0.5rem' }}>🔌 Add Connectors ({newStation.connectors.length} added)</h4>
+                  
+                  <div style={{ display:'grid', gridTemplateColumns:'1.2fr 2fr 1fr 1.2fr 1fr', gap:8, alignItems:'end', marginBottom:'0.8rem' }}>
+                    <div>
+                      <label style={{ fontSize:'0.65rem', color:'var(--muted)', fontWeight:600, display:'block', marginBottom:4 }}>ID</label>
+                      <input style={{ ...inpStyle, padding:'0.4rem 0.6rem', fontSize:'0.8rem' }} value={newConnector.id} onChange={e=>setNewConnector({...newConnector, id:e.target.value})} placeholder="C001" />
+                    </div>
+                    <div>
+                      <label style={{ fontSize:'0.65rem', color:'var(--muted)', fontWeight:600, display:'block', marginBottom:4 }}>Type</label>
+                      <select style={{ ...inpStyle, padding:'0.4rem 0.6rem', fontSize:'0.8rem', height:'34px' }} value={newConnector.type} onChange={e=>setNewConnector({...newConnector, type:e.target.value})}>
+                        {['CCS2', 'CHAdeMO', 'Type2AC', 'BharatDC', 'GBT', 'AtherProprietary'].map(t => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize:'0.65rem', color:'var(--muted)', fontWeight:600, display:'block', marginBottom:4 }}>Power(kW)</label>
+                      <input style={{ ...inpStyle, padding:'0.4rem 0.6rem', fontSize:'0.8rem' }} type="number" value={newConnector.powerKw} onChange={e=>setNewConnector({...newConnector, powerKw:parseInt(e.target.value)||0})} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize:'0.65rem', color:'var(--muted)', fontWeight:600, display:'block', marginBottom:4 }}>Price (₹)</label>
+                      <input style={{ ...inpStyle, padding:'0.4rem 0.6rem', fontSize:'0.8rem' }} type="number" value={newConnector.pricePerKwh} onChange={e=>setNewConnector({...newConnector, pricePerKwh:parseFloat(e.target.value)||0})} />
+                    </div>
+                    <div>
+                      <button type="button" onClick={handleAddConnector} style={btnBase('primary', { padding:'0.4rem 0.8rem', fontSize:'0.75rem', borderRadius:8, width:'100%', height:'34px' })}>
+                        + Add
+                      </button>
+                    </div>
+                  </div>
+
+                  {newStation.connectors.length > 0 && (
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginTop:8 }}>
+                      {newStation.connectors.map((c, idx) => (
+                        <span key={idx} style={{ background:'var(--surface)', border:'1px solid var(--border)', padding:'4px 8px', borderRadius:8, fontSize:'0.72rem', display:'flex', alignItems:'center', gap:6, color:'var(--text-secondary)' }}>
+                          🔌 {c.id} ({c.type} - {c.powerKw}kW - ₹{c.pricePerKwh})
+                          <button type="button" onClick={()=>setNewStation({...newStation, connectors: newStation.connectors.filter((_,i)=>i!==idx)})} style={{ background:'none', border:'none', color:'#EF4444', fontWeight:700, cursor:'pointer', fontSize:'0.75rem' }}>✕</button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <button type="submit" disabled={loading} style={btnBase('primary', { padding:'0.75rem', width:'100%', borderRadius:12, marginTop:10 })}>
+                  {loading ? 'Creating Charging Station...' : '⚡ Create Charging Station'}
+                </button>
+              </form>
             )}
           </div>
 

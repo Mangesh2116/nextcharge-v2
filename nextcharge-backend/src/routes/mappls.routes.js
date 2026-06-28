@@ -59,11 +59,13 @@ async function getMapplsToken() {
  *   - radius (optional): Search radius in meters (default: 5000)
  *   - keywords (optional): Search keywords (default: "EV charging station")
  */
-/**
- * Calculate stable, deterministic coordinates relative to the reference point using a seed angle.
- * This ensures that if Mappls doesn't return coordinates, the station has a stable, correct-distance location.
- */
+const generatedCoordsCache = new Map();
+
 function getStableCoordinates(eLoc, refLat, refLng, distanceMeters) {
+  if (generatedCoordsCache.has(eLoc)) {
+    return generatedCoordsCache.get(eLoc);
+  }
+  
   let hash = 0;
   const str = eLoc || '';
   for (let i = 0; i < str.length; i++) {
@@ -81,10 +83,12 @@ function getStableCoordinates(eLoc, refLat, refLng, distanceMeters) {
   const latRad = (refLat * Math.PI) / 180;
   const dLng = (dist * Math.sin(angle)) / (111111 * Math.cos(latRad));
   
-  return {
+  const coords = {
     latitude: refLat + dLat,
     longitude: refLng + dLng
   };
+  generatedCoordsCache.set(eLoc, coords);
+  return coords;
 }
 
 router.get('/nearby', async (req, res) => {
@@ -142,8 +146,8 @@ router.get('/nearby', async (req, res) => {
       const eLoc = place.eLoc || place.eloc || `mappls_${index}`;
       const distance = place.distance ? parseFloat(place.distance) : null;
       
-      let latitude = parseFloat(place.latitude);
-      let longitude = parseFloat(place.longitude);
+      let latitude = parseFloat(place.latitude || place.entryLatitude || place.lat);
+      let longitude = parseFloat(place.longitude || place.entryLongitude || place.lng || place.lon);
       
       // Calculate stable mock coordinates if coordinates are missing in Mappls response
       if (isNaN(latitude) || isNaN(longitude) || latitude === 0 || longitude === 0) {

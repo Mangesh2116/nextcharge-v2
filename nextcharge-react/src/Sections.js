@@ -317,7 +317,8 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
     searchAddressNominatim,
     fetchOSMChargingStations,
     planEVRoute,
-    theme
+    theme,
+    blockStation
   } = useApp();
 
   // Core Exploration States
@@ -422,6 +423,22 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
     if (!user) { setAuthModal('login'); return; }
     setSelectedStation(activePin);
     setBookingModal(true);
+  };
+
+  const handleBlockActiveStation = async () => {
+    if (!activePin) return;
+    const confirm = window.confirm(`Are you sure you want to block/remove the station "${activePin.name}"?`);
+    if (!confirm) return;
+
+    try {
+      await blockStation(activePin._id, 'Fake or inaccurate details reported by admin');
+      showToast(`Station "${activePin.name}" blocked successfully and hidden.`, 'success');
+      setMapplsStations(prev => prev.filter(s => s._id !== activePin._id));
+      setOsmStations(prev => prev.filter(s => s._id !== activePin._id));
+      setActivePin(null);
+    } catch (err) {
+      showToast(err.message || 'Failed to remove station', 'error');
+    }
   };
 
   const loadMapplsStations = useCallback(async (lat, lng, radius = 10000) => {
@@ -1120,6 +1137,35 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
 
                 {/* Action Buttons */}
                 <div style={{ display: 'flex', gap: 8, marginTop: 'auto', width: '100%' }}>
+                  {user && user.role === 'admin' && (
+                    <button
+                      type="button"
+                      onClick={handleBlockActiveStation}
+                      style={{
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        color: '#EF4444',
+                        border: '1.5px solid rgba(239, 68, 68, 0.3)',
+                        borderRadius: 12,
+                        padding: '0.75rem 1rem',
+                        fontWeight: 600,
+                        fontSize: '0.88rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px'
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
+                      }}
+                    >
+                      ✕ Block Station
+                    </button>
+                  )}
                   <a 
                     href={`https://www.google.com/maps/dir/?api=1&destination=${activePin.lat},${activePin.lng}`}
                     target="_blank"

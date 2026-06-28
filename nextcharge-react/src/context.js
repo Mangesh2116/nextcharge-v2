@@ -166,6 +166,26 @@ export function AppProvider({ children }) {
     return true;
   }, [token]);
 
+  const blockStation = useCallback(async (stationId, reason) => {
+    if (!token) throw new Error('Not authenticated');
+    const r = await apiCall('/admin/stations/block', {
+      method: 'POST',
+      body: { stationId, reason }
+    }, token);
+    if (!r.ok) throw new Error(r.error || 'Failed to block station');
+    return true;
+  }, [token]);
+
+  const addStation = useCallback(async (payload) => {
+    if (!token) throw new Error('Not authenticated');
+    const r = await apiCall('/stations', {
+      method: 'POST',
+      body: payload
+    }, token);
+    if (!r.ok) throw new Error(r.error || 'Failed to create station');
+    return r.data.station;
+  }, [token]);
+
   const fetchNearbyStations = useCallback(async (lat, lng, radius = 5000) => {
     let mapplsStations = [];
     let osmStations = [];
@@ -688,7 +708,7 @@ export function AppProvider({ children }) {
   }, [fetchOSMRoute, fetchOSMChargingStations, searchStations]);
 
   return (
-    <Ctx.Provider value={{ user, token, toasts, showToast, authModal, setAuthModal, bookingModal, setBookingModal, selectedStation, setSelectedStation, backendOnline, login, signup, logout, googleLogin, createBooking, searchStations, fetchNearbyStations, theme, toggleTheme, articleEditorModal, setArticleEditorModal, fetchArticles, fetchArticle, fetchAdminArticles, createArticle, updateArticle, deleteArticle, searchAddressNominatim, fetchOSMChargingStations, fetchOSMRoute, planEVRoute }}>
+    <Ctx.Provider value={{ user, token, toasts, showToast, authModal, setAuthModal, bookingModal, setBookingModal, selectedStation, setSelectedStation, backendOnline, login, signup, logout, googleLogin, createBooking, searchStations, fetchNearbyStations, theme, toggleTheme, articleEditorModal, setArticleEditorModal, fetchArticles, fetchArticle, fetchAdminArticles, createArticle, updateArticle, deleteArticle, searchAddressNominatim, fetchOSMChargingStations, fetchOSMRoute, planEVRoute, blockStation, addStation }}>
       {children}
     </Ctx.Provider>
   );
