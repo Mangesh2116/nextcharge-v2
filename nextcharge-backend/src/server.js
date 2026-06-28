@@ -25,7 +25,7 @@ const adminRoutes = require('./routes/admin.routes');
 const articleRoutes = require('./routes/article.routes');
 const mapRoutes = require('./routes/map.routes');
 const feedbackRoutes = require('./routes/feedback.routes');
-const mapplsRoutes = require('./routes/mappls.routes');
+const googleRoutes = require('./routes/google.routes');
 
 const app = express();
 const server = http.createServer(app);
@@ -93,7 +93,8 @@ app.use('/api/v1/admin',    adminRoutes);
 app.use('/api/v1/articles', articleRoutes);
 app.use('/api/v1/map',      mapRoutes);
 app.use('/api/v1/feedbacks', feedbackRoutes);
-app.use('/api/v1/mappls',    mapplsRoutes);
+app.use('/api/v1/google',     googleRoutes);
+app.use('/api/v1/mappls',     googleRoutes);
 
 // ─── 404 handler ─────────────────────────────────────────────────────────────
 app.use((req, res) => {

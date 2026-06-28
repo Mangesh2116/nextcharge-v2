@@ -68,7 +68,8 @@ async function fetchOSMChargingStations(lat, lng, radiusMeters) {
       const response = await fetch(mirror, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'NextCharge/1.0 (apisupport@nextcharge.in)'
         },
         body: `data=${encodeURIComponent(osmQuery)}`,
         signal: controller.signal
