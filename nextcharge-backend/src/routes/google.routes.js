@@ -209,7 +209,7 @@ router.get('/nearby', async (req, res) => {
 
       // Final fallback: if no stations found (OSM returned 0/failed and Google Places failed/disabled)
       if (!rawStations || rawStations.length === 0) {
-        console.log('[Nearby API] Fetch returned 0 stations. Triggering DB & Mock fallbacks...');
+        console.log('[Nearby API] Fetch returned 0 stations. Triggering DB lookup...');
         
         // 1. Fetch from local database stations if any
         let dbStations = [];
@@ -243,43 +243,7 @@ router.get('/nearby', async (req, res) => {
           console.error('[Nearby API] Failed to fetch local DB stations:', dbErr.message);
         }
 
-        // 2. Generate deterministic mock stations to guarantee results
-        const mockOperators = [
-          { name: 'Tata Power EZ Charge', network: 'TataPower' },
-          { name: 'Ather Grid', network: 'Ather' },
-          { name: 'Jio-bp Pulse', network: 'Reliance' },
-          { name: 'Statiq Charging Station', network: 'Statiq' },
-          { name: 'Fortum Charge & Drive', network: 'Fortum' },
-          { name: 'Zeon Charging', network: 'Zeon' }
-        ];
-
-        const generatedMocks = [];
-        const numMocks = 5;
-        for (let i = 0; i < numMocks; i++) {
-          const operator = mockOperators[i % mockOperators.length];
-          const angle = (i * 2 * Math.PI) / numMocks;
-          const dist = (radiusMeters * 0.2) + ((Math.abs(Math.sin(i)) * radiusMeters * 0.4));
-          
-          const dLat = (dist * Math.cos(angle)) / 111111;
-          const latRad = (parsedLat * Math.PI) / 180;
-          const dLng = (dist * Math.sin(angle)) / (111111 * Math.cos(latRad));
-          
-          const stationLat = parsedLat + dLat;
-          const stationLng = parsedLng + dLng;
-          
-          generatedMocks.push({
-            eLoc: `mock-${i}-${roundedLat}-${roundedLng}`,
-            placeName: `${operator.name} — ${['Hub', 'Fast Station', 'Charging Plaza', 'EV Zone', 'Power Port'][i % 5]}`,
-            placeAddress: `Near Landmark, Area ${i + 1}, City Zone`,
-            latitude: stationLat,
-            longitude: stationLng,
-            type: 'electric_vehicle_charging_station',
-            keywords: operator.network,
-            orderIndex: i
-          });
-        }
-
-        rawStations = [...dbStations, ...generatedMocks];
+        rawStations = dbStations;
       }
 
       // Save to cache for 1 hour (3600 seconds)

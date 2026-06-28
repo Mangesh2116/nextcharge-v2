@@ -851,9 +851,13 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
     };
 
     map.on('moveend', onMoveEnd);
+    map.on('dragend', onMoveEnd);
+    map.on('zoomend', onMoveEnd);
 
     return () => {
       map.off('moveend', onMoveEnd);
+      map.off('dragend', onMoveEnd);
+      map.off('zoomend', onMoveEnd);
       clearTimeout(fetchTimeoutRef.current);
       if (userLocMarkerRef.current) {
         userLocMarkerRef.current.remove();
