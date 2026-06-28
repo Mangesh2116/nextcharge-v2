@@ -45,7 +45,9 @@ function HomePage() {
         <StationsSection apiStations={nearbyStations.length ? nearbyStations : apiStations} loading={loading} />
       </ErrorBoundary>
       <ErrorBoundary name="How It Works"><HowItWorks /></ErrorBoundary>
-      <ErrorBoundary name="Booking Section"><BookingSection /></ErrorBoundary>
+      <ErrorBoundary name="Booking Section">
+        <BookingSection apiStations={nearbyStations.length ? nearbyStations : apiStations} />
+      </ErrorBoundary>
       <ErrorBoundary name="News Section"><NewsSection /></ErrorBoundary>
       <ErrorBoundary name="App Section"><AppSection /></ErrorBoundary>
       <ErrorBoundary name="Footer"><Footer /></ErrorBoundary>

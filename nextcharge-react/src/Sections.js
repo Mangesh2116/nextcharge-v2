@@ -3,7 +3,7 @@ import { useApp } from './context';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useCountUp, useScrollReveal, useTiltCard } from './hooks';
-import { STATS, STATIONS, FILTER_TABS, CONNECTOR_TYPES, HOW_STEPS } from './data';
+import { STATS, FILTER_TABS, CONNECTOR_TYPES, HOW_STEPS } from './data';
 import { MagneticButton, btnBase } from './Navbar';
 
 const DirectionsIcon = ({ size = 18 }) => (
@@ -1760,7 +1760,8 @@ function StationCard({ station, delay }) {
   const { setSelectedStation, setBookingModal, user, setAuthModal } = useApp();
   const tilt = useTiltCard(6);
   const [hov, setHov] = useState(false);
-  const isAvail = station.status==='available';
+  const isAvail = station.status === 'available';
+  const showStatus = !!station.status;
   const handleBook = () => { if(!user){setAuthModal('login');return;} setSelectedStation(station); setBookingModal(true); };
 
   return (
@@ -1771,16 +1772,27 @@ function StationCard({ station, delay }) {
         transition:'border-color 0.2s, box-shadow 0.3s, transform 0.3s cubic-bezier(0.23,1,0.32,1)' }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'1rem' }}>
         <div style={{ width:42, height:42, background:'var(--accent-light)', borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.2rem' }}>{station.icon}</div>
-        <span style={{ padding:'0.2rem 0.7rem', borderRadius:50, fontSize:'0.7rem', fontWeight:700, background:isAvail?'rgba(16,185,129,0.08)':'rgba(245,158,11,0.08)', color:isAvail?'var(--accent)':'#F59E0B' }}>{isAvail?'Available':'Busy'}</span>
+        {showStatus && (
+          <span style={{ padding:'0.2rem 0.7rem', borderRadius:50, fontSize:'0.7rem', fontWeight:700, background:isAvail?'rgba(16,185,129,0.08)':'rgba(245,158,11,0.08)', color:isAvail?'var(--accent)':'#F59E0B' }}>
+            {isAvail?'Available':'Busy'}
+          </span>
+        )}
       </div>
       <div style={{ fontSize:'1rem', fontWeight:700, marginBottom:'0.3rem', color:'var(--text)' }}>{station.name}</div>
-      <div style={{ fontSize:'0.8rem', color:'var(--muted)', marginBottom:'1rem' }}>📍 {station.address} · {station.distance}</div>
+      <div style={{ fontSize:'0.8rem', color:'var(--muted)', marginBottom:'1rem' }}>📍 {station.address}{station.distance ? ` · ${station.distance}` : ''}</div>
       <div style={{ display:'flex', gap:'1rem', marginBottom:'1rem' }}>
-        {[['portsOpen','Ports'],['maxSpeed','Speed'],['price','Price']].map(([k,l])=><div key={k} style={{ fontSize:'0.78rem', color:'var(--muted)' }}><strong style={{ color:'var(--text)', display:'block', fontSize:'0.88rem' }}>{station[k]}</strong>{l}</div>)}
+        {[['portsOpen','Ports'],['maxSpeed','Speed'],['price','Price']].map(([k,l]) => {
+          if (!station[k]) return null;
+          return (
+            <div key={k} style={{ fontSize:'0.78rem', color:'var(--muted)' }}><strong style={{ color:'var(--text)', display:'block', fontSize:'0.88rem' }}>{station[k]}</strong>{l}</div>
+          );
+        })}
       </div>
-      <div style={{ display:'flex', gap:'0.4rem', marginBottom:'1.2rem', flexWrap:'wrap' }}>
-        {station.connectors.map(c=><span key={c} style={{ padding:'0.2rem 0.55rem', border:'1px solid var(--border)', borderRadius:6, fontSize:'0.7rem', color:'var(--muted)', background:'var(--bg-soft)' }}>{c}</span>)}
-      </div>
+      {station.connectors && station.connectors.length > 0 && (
+        <div style={{ display:'flex', gap:'0.4rem', marginBottom:'1.2rem', flexWrap:'wrap' }}>
+          {station.connectors.map(c=><span key={c} style={{ padding:'0.2rem 0.55rem', border:'1px solid var(--border)', borderRadius:6, fontSize:'0.7rem', color:'var(--muted)', background:'var(--bg-soft)' }}>{c}</span>)}
+        </div>
+      )}
       <div style={{ display:'flex', gap:'0.6rem' }}>
         <button onClick={handleBook} style={btnBase('primary',{flex:1,padding:'0.65rem',fontSize:'0.82rem'})}>Book Slot</button>
         <button 
@@ -1804,11 +1816,15 @@ function StationCard({ station, delay }) {
   );
 }
 
-export function StationsSection({ apiStations, loading }) {
+export function StationsSection({ apiStations = [], loading }) {
   const [activeTab, setActiveTab] = useState('All');
   const rev = useScrollReveal();
-  const base = apiStations.length ? apiStations : STATIONS;
-  const filtered = activeTab==='All' ? base : base.filter(s=>({'Fast DC':s=>s.connectors.some(c=>c.includes('CCS')||c.includes('CHAde')),'AC':s=>s.connectors.some(c=>c.includes('AC')||c.includes('Type 2')),'CCS2':s=>s.connectors.some(c=>c.includes('CCS2'))}[activeTab]?.(s)));
+  const base = apiStations || [];
+  const filtered = activeTab==='All' ? base : base.filter(s=>({
+    'Fast DC': s=>s.connectors?.some(c=>c.includes('CCS')||c.includes('CHAde')),
+    'AC': s=>s.connectors?.some(c=>c.includes('AC')||c.includes('Type 2')),
+    'CCS2': s=>s.connectors?.some(c=>c.includes('CCS2'))
+  }[activeTab]?.(s)));
   const displayedStations = filtered.slice(0, 10);
 
   return (
@@ -1825,7 +1841,13 @@ export function StationsSection({ apiStations, loading }) {
         </div>
       ) : (
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:'1.2rem' }}>
-          {displayedStations.map((s,i)=><StationCard key={s._id} station={s} delay={i} />)}
+          {displayedStations.length > 0 ? (
+            displayedStations.map((s,i)=><StationCard key={s._id} station={s} delay={i} />)
+          ) : (
+            <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem', color: 'var(--muted)' }}>
+              No charging stations found in this area.
+            </div>
+          )}
         </div>
       )}
     </section>
@@ -1862,12 +1884,35 @@ function HowCard({ step, delay }) {
   );
 }
 
-export function BookingSection() {
+export function BookingSection({ apiStations = [] }) {
   const { user, setAuthModal, setBookingModal, setSelectedStation } = useApp();
   const rev = useScrollReveal();
-  const [form, setForm] = useState({ station:STATIONS[0].name, connector:CONNECTOR_TYPES[0], vehicle:'', date:'', time:'10:00', duration:'2 hours' });
+  
+  const hasStations = apiStations && apiStations.length > 0;
+  const initialStationName = hasStations ? apiStations[0].name : '';
+  const [form, setForm] = useState({ station: initialStationName, connector: CONNECTOR_TYPES[0], vehicle: '', date: '', time: '10:00', duration: '2 hours' });
+
+  useEffect(() => {
+    if (hasStations && !form.station) {
+      setForm(f => ({ ...f, station: apiStations[0].name }));
+    }
+  }, [apiStations, hasStations, form.station]);
+
   const set = k => e => setForm(f=>({...f,[k]:e.target.value}));
-  const handleConfirm = () => { if(!user){setAuthModal('login');return;} setSelectedStation(STATIONS.find(s=>s.name===form.station)||STATIONS[0]); setBookingModal(true); };
+  const handleConfirm = () => {
+    if(!user){setAuthModal('login');return;}
+    if(!hasStations) {
+      alert('No station selected for booking');
+      return;
+    }
+    const found = apiStations.find(s=>s.name===form.station);
+    if (found) {
+      setSelectedStation(found);
+      setBookingModal(true);
+    } else {
+      alert('Selected station not found');
+    }
+  };
 
   return (
     <section id="booking" ref={rev.ref} className={`reveal ${rev.visible?'visible':''}`} style={secStyle('var(--bg)')}>
@@ -1886,7 +1931,13 @@ export function BookingSection() {
         <div style={{ background:'var(--surface)', border:'1px solid var(--glass-border)', borderRadius:24, padding:'2rem', boxShadow:'var(--shadow-lg)' }}>
           <div style={{ fontSize:'1.3rem', fontWeight:800, marginBottom:'0.3rem', color:'var(--text)' }}>Reserve a Slot</div>
           <div style={{ color:'var(--muted)', fontSize:'0.84rem', marginBottom:'1.5rem' }}>Fill in the details to secure your time</div>
-          {[['Station',<select value={form.station} onChange={set('station')} style={inpStyle}>{STATIONS.map(s=><option key={s._id}>{s.name}</option>)}</select>],
+          {[['Station',<select value={form.station} onChange={set('station')} style={inpStyle}>
+              {hasStations ? (
+                apiStations.map(s=><option key={s._id}>{s.name}</option>)
+              ) : (
+                <option value="">No nearby stations discovered yet</option>
+              )}
+            </select>],
             ['Connector',<select value={form.connector} onChange={set('connector')} style={inpStyle}>{CONNECTOR_TYPES.map(c=><option key={c}>{c}</option>)}</select>],
             ['Vehicle',<input value={form.vehicle} onChange={set('vehicle')} placeholder="e.g. Tata Nexon EV" style={inpStyle} />],
             ['Date & Time',<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.6rem'}}><input type="date" value={form.date} onChange={set('date')} style={inpStyle}/><input type="time" value={form.time} onChange={set('time')} style={inpStyle}/></div>],

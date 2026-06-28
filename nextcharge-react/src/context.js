@@ -212,40 +212,18 @@ export function AppProvider({ children }) {
       const r = await apiCall(ep);
       if (r.ok && r.data?.data) {
         mapplsStations = r.data.data.map((place, i) => {
-          const text = `${place.placeName} ${place.keywords || ''}`.toLowerCase();
-          const connectors = [];
-          if (text.includes('ccs') || text.includes('dc fast')) connectors.push('CCS2');
-          if (text.includes('chademo')) connectors.push('CHAdeMO');
-          if (text.includes('type 2') || text.includes('ac')) connectors.push('Type 2 AC');
-          if (text.includes('bharat')) connectors.push('Bharat DC');
-          if (connectors.length === 0) connectors.push('CCS2', 'Type 2 AC');
-
-          let maxSpeed = '50 kW';
-          if (text.includes('fast') || text.includes('dc')) maxSpeed = '60 kW';
-          if (text.includes('supercharger') || text.includes('ultra')) maxSpeed = '150 kW';
-          if (text.includes('slow') || (text.includes('ac') && !text.includes('dc'))) maxSpeed = '7.2 kW';
-
-          let icon = '⚡';
-          if (text.includes('tata')) icon = '🔋';
-          else if (text.includes('ather')) icon = '🛵';
-          else if (text.includes('bpcl') || text.includes('iocl') || text.includes('hpcl')) icon = '⛽';
-          else if (text.includes('reliance') || text.includes('jio')) icon = '🏪';
-          else if (text.includes('mg') || text.includes('hyundai') || text.includes('mercedes')) icon = '🚗';
-          else if (text.includes('chargezone') || text.includes('statiq') || text.includes('fortum')) icon = '🔌';
-
-          const distKm = place.distance != null ? (place.distance / 1000).toFixed(1) + ' km' : '—';
-
+          const distKm = place.distance != null ? (place.distance / 1000).toFixed(1) + ' km' : null;
           return {
             _id: place.eLoc || `mappls_${i}`,
-            icon,
+            icon: '⚡',
             name: place.placeName || 'EV Charging Station',
-            address: place.placeAddress || '',
+            address: place.placeAddress || 'Address not available',
             distance: distKm,
-            portsOpen: '—',
-            maxSpeed,
-            price: '₹15/kWh',
-            connectors,
-            status: 'available',
+            portsOpen: null,
+            maxSpeed: null,
+            price: null,
+            connectors: [],
+            status: null,
             lat: place.latitude,
             lng: place.longitude,
             mapPos: null,
@@ -342,38 +320,17 @@ export function AppProvider({ children }) {
       const r = await apiCall(ep);
       if (r.ok && r.data?.data) {
         return r.data.data.map((place, i) => {
-          const text = `${place.placeName} ${place.keywords || ''}`.toLowerCase();
-          const connectors = [];
-          if (text.includes('ccs') || text.includes('dc fast') || text.includes('combo')) connectors.push('CCS2');
-          if (text.includes('chademo')) connectors.push('CHAdeMO');
-          if (text.includes('type 2') || text.includes('type2') || text.includes('ac')) connectors.push('Type 2 AC');
-          if (text.includes('bharat') || text.includes('gbt')) connectors.push('Bharat DC');
-          if (connectors.length === 0) connectors.push('CCS2', 'Type 2 AC');
-
-          let maxSpeed = '50 kW';
-          if (text.includes('fast') || text.includes('dc')) maxSpeed = '60 kW';
-          if (text.includes('supercharger') || text.includes('ultra') || text.includes('120kw') || text.includes('150kw')) maxSpeed = '150 kW';
-          if (text.includes('slow') || (text.includes('ac') && !text.includes('dc'))) maxSpeed = '7.2 kW';
-
-          let icon = '⚡';
-          if (text.includes('tata')) icon = '🔋';
-          else if (text.includes('ather')) icon = '🛵';
-          else if (text.includes('bpcl') || text.includes('iocl') || text.includes('hpcl')) icon = '⛽';
-          else if (text.includes('reliance') || text.includes('jio')) icon = '🏪';
-          else if (text.includes('mg') || text.includes('hyundai') || text.includes('mercedes') || text.includes('audi')) icon = '🚗';
-          else if (text.includes('chargezone') || text.includes('statiq') || text.includes('fortum') || text.includes('bolt')) icon = '🔌';
-
           return {
             _id: place.eLoc || `station_${i}`,
-            icon,
+            icon: '⚡',
             name: place.placeName || 'EV Charging Station',
-            address: place.placeAddress || '',
-            distance: place.distance != null ? (place.distance / 1000).toFixed(1) + ' km' : '—',
-            portsOpen: '—',
-            maxSpeed,
-            price: '₹15/kWh',
-            connectors,
-            status: 'available',
+            address: place.placeAddress || 'Address not available',
+            distance: place.distance != null ? (place.distance / 1000).toFixed(1) + ' km' : null,
+            portsOpen: null,
+            maxSpeed: null,
+            price: null,
+            connectors: [],
+            status: null,
             lat: place.latitude,
             lng: place.longitude,
             mapPos: null,

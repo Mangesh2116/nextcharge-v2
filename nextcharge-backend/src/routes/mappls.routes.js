@@ -133,14 +133,12 @@ router.get('/nearby', async (req, res) => {
       console.log(`[Nearby Cache] Hit for key: ${cacheKey}`);
     } else {
       console.log(`[Nearby Cache] Miss for key: ${cacheKey}`);
-      let fetchSuccess = false;
-      let suggestedLocations = [];
-
-      // ─── 1. Try static REST API Key first ──────────────────────────────────
+      let mapplsMapped = [];
       const staticKey = process.env.MAPPLS_REST_KEY;
+
       if (staticKey) {
         try {
-          console.log('[Nearby API] Attempting search with Mappls Static REST Key...');
+          console.log('[Nearby API] Calling Mappls Nearby API with Static Key...');
           const params = new URLSearchParams({
             keywords,
             refLocation: `${lat},${lng}`,
@@ -150,189 +148,42 @@ router.get('/nearby', async (req, res) => {
             access_token: staticKey
           });
           const apiUrl = `https://search.mappls.com/search/places/nearby/json?${params.toString()}`;
+          console.log(`[Nearby API] Request URL: ${apiUrl}`);
+
           const apiRes = await fetch(apiUrl, { headers: { 'accept': 'application/json' } });
+          const text = await apiRes.text();
+          console.log('[Nearby API] Raw Mappls API Response:', text);
 
           if (apiRes.ok) {
-            const data = await apiRes.json();
-            suggestedLocations = data.suggestedLocations || [];
-            fetchSuccess = true;
-            console.log(`[Nearby API] Successfully fetched ${suggestedLocations.length} stations using Mappls Static Key`);
-          } else if (apiRes.status === 204) {
-            suggestedLocations = [];
-            fetchSuccess = true;
+            const data = JSON.parse(text);
+            const suggestedLocations = data.suggestedLocations || [];
+            mapplsMapped = suggestedLocations.map((place, index) => {
+              const eLoc = place.eLoc || place.eloc || `mappls_${index}`;
+              const pLat = parseFloat(place.latitude || place.entryLatitude || place.lat || 0);
+              const pLng = parseFloat(place.longitude || place.entryLongitude || place.lng || place.lon || 0);
+              return {
+                eLoc,
+                placeName: place.placeName || place.poi || 'EV Charging Station',
+                placeAddress: place.placeAddress || place.address || '',
+                latitude: pLat,
+                longitude: pLng,
+                type: place.type || 'electric_vehicle_charging_station',
+                keywords: place.keywords || '',
+                orderIndex: index
+              };
+            });
+            console.log(`[Nearby API] Successfully fetched ${mapplsMapped.length} stations using Mappls Static Key`);
           } else {
-            const text = await apiRes.text();
-            console.warn(`[Nearby API] Mappls Static Key query returned status ${apiRes.status}: ${text}`);
+            console.error(`[Nearby API] Mappls search returned error status ${apiRes.status}: ${text}`);
           }
         } catch (err) {
           console.error('[Nearby API] Error calling Mappls with Static Key:', err.message);
         }
+      } else {
+        console.warn('[Nearby API] MAPPLS_REST_KEY env variable is not set!');
       }
 
-      // ─── 2. Try OAuth Client Credentials if static key failed/missing ──────
-      if (!fetchSuccess) {
-        try {
-          console.log('[Nearby API] Attempting search with Mappls OAuth Token...');
-          const token = await getMapplsToken();
-          const params = new URLSearchParams({
-            keywords,
-            refLocation: `${lat},${lng}`,
-            page: '1',
-            region: 'IND',
-            radius: radius
-          });
-          const apiUrl = `https://search.mappls.com/search/places/nearby/json?${params.toString()}`;
-          const apiRes = await fetch(apiUrl, {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'accept': 'application/json'
-            }
-          });
-
-          if (apiRes.ok) {
-            const data = await apiRes.json();
-            suggestedLocations = data.suggestedLocations || [];
-            fetchSuccess = true;
-            console.log(`[Nearby API] Successfully fetched ${suggestedLocations.length} stations using OAuth Token`);
-          } else if (apiRes.status === 204) {
-            suggestedLocations = [];
-            fetchSuccess = true;
-          } else {
-            const text = await apiRes.text();
-            console.warn(`[Nearby API] Mappls OAuth query returned status ${apiRes.status}: ${text}`);
-          }
-        } catch (err) {
-          console.error('[Nearby API] OAuth Token fallback failed:', err.message);
-        }
-      }
-
-      // Map Mappls results if fetch succeeded
-      if (fetchSuccess) {
-        rawStations = suggestedLocations.map((place, index) => {
-          const eLoc = place.eLoc || place.eloc || `mappls_${index}`;
-          const pLat = parseFloat(place.latitude || place.entryLatitude || place.lat || 0);
-          const pLng = parseFloat(place.longitude || place.entryLongitude || place.lng || place.lon || 0);
-          return {
-            eLoc,
-            placeName: place.placeName || place.poi || 'EV Charging Station',
-            placeAddress: place.placeAddress || place.address || '',
-            latitude: pLat,
-            longitude: pLng,
-            type: place.type || 'electric_vehicle_charging_station',
-            keywords: place.keywords || '',
-            orderIndex: index
-          };
-        });
-      }
-
-      // ─── 3. Fallback to OpenStreetMap if Mappls failed or returned 0 ────────
-      if (!rawStations || rawStations.length === 0) {
-        console.log('[Nearby API] Mappls returned 0/failed. Falling back to OpenStreetMap Overpass API...');
-        try {
-          const osmElements = await fetchOSMChargingStations(parsedLat, parsedLng, radiusMeters);
-          rawStations = osmElements.map((element, index) => {
-            const pLat = element.lat || element.center?.lat || 0;
-            const pLng = element.lon || element.center?.lon || 0;
-            const name = element.tags?.name || element.tags?.operator || element.tags?.brand || 'EV Charging Station (OSM)';
-            let address = element.tags?.['addr:full'] || '';
-            if (!address) {
-              const street = element.tags?.['addr:street'] || '';
-              const city = element.tags?.['addr:city'] || '';
-              const postcode = element.tags?.['addr:postcode'] || '';
-              address = [street, city, postcode].filter(Boolean).join(', ') || 'Charging Station Address';
-            }
-            return {
-              eLoc: `osm-${element.type || 'node'}-${element.id}`,
-              placeName: name,
-              placeAddress: address,
-              latitude: pLat,
-              longitude: pLng,
-              type: 'electric_vehicle_charging_station',
-              keywords: '',
-              orderIndex: index
-            };
-          });
-        } catch (osmErr) {
-          console.error('[Nearby API] OSM Overpass fetch failed:', osmErr.message);
-          rawStations = [];
-        }
-      }
-
-      // ─── 4. Fallback to Local DB + Mock stations if still 0 ────────────────
-      if (!rawStations || rawStations.length === 0) {
-        console.log('[Nearby API] Fetch returned 0 stations. Triggering DB & Mock fallbacks...');
-        
-        // Fetch from local database stations if any
-        let dbStations = [];
-        try {
-          const Station = require('../models/Station');
-          const localStations = await Station.find({
-            status: 'active',
-            location: {
-              $near: {
-                $geometry: { type: 'Point', coordinates: [parsedLng, parsedLat] },
-                $maxDistance: radiusMeters
-              }
-            }
-          }).limit(10);
-          
-          dbStations = localStations.map((s, index) => {
-            const [sLng, sLat] = s.location.coordinates;
-            return {
-              eLoc: String(s._id),
-              placeName: s.name,
-              placeAddress: `${s.address.line1 || ''}, ${s.address.city || ''}, ${s.address.state || ''}`,
-              latitude: sLat,
-              longitude: sLng,
-              type: 'electric_vehicle_charging_station',
-              keywords: s.network || '',
-              orderIndex: index
-            };
-          });
-          console.log(`[Nearby API] Found ${dbStations.length} local DB stations in range`);
-        } catch (dbErr) {
-          console.error('[Nearby API] Failed to fetch local DB stations:', dbErr.message);
-        }
-
-        // Generate deterministic mock stations to guarantee results
-        const mockOperators = [
-          { name: 'Tata Power EZ Charge', network: 'TataPower' },
-          { name: 'Ather Grid', network: 'Ather' },
-          { name: 'Jio-bp Pulse', network: 'Reliance' },
-          { name: 'Statiq Charging Station', network: 'Statiq' },
-          { name: 'Fortum Charge & Drive', network: 'Fortum' },
-          { name: 'Zeon Charging', network: 'Zeon' }
-        ];
-
-        const generatedMocks = [];
-        const numMocks = 5;
-        for (let i = 0; i < numMocks; i++) {
-          const operator = mockOperators[i % mockOperators.length];
-          const angle = (i * 2 * Math.PI) / numMocks;
-          const dist = (radiusMeters * 0.2) + ((Math.abs(Math.sin(i)) * radiusMeters * 0.4));
-          
-          const dLat = (dist * Math.cos(angle)) / 111111;
-          const latRad = (parsedLat * Math.PI) / 180;
-          const dLng = (dist * Math.sin(angle)) / (111111 * Math.cos(latRad));
-          
-          const stationLat = parsedLat + dLat;
-          const stationLng = parsedLng + dLng;
-          
-          generatedMocks.push({
-            eLoc: `mock-${i}-${roundedLat}-${roundedLng}`,
-            placeName: `${operator.name} — ${['Hub', 'Fast Station', 'Charging Plaza', 'EV Zone', 'Power Port'][i % 5]}`,
-            placeAddress: `Near Landmark, Area ${i + 1}, City Zone`,
-            latitude: stationLat,
-            longitude: stationLng,
-            type: 'electric_vehicle_charging_station',
-            keywords: operator.network,
-            orderIndex: i
-          });
-        }
-
-        rawStations = [...dbStations, ...generatedMocks];
-      }
-
+      rawStations = mapplsMapped;
       await setCache(cacheKey, rawStations, 3600);
     }
 
