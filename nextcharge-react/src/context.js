@@ -167,61 +167,10 @@ export function AppProvider({ children }) {
   }, [token]);
 
   const fetchNearbyStations = useCallback(async (lat, lng, radius = 5000) => {
-    let googleStations = [];
     let mapplsStations = [];
+    let osmStations = [];
 
-    // 1. Fetch from Google Nearby (which also includes OSM Overpass fallback)
-    try {
-      const ep = `/google/nearby?lat=${lat}&lng=${lng}&radius=${radius}`;
-      const r = await apiCall(ep);
-      if (r.ok && r.data?.data) {
-        googleStations = r.data.data.map((place, i) => {
-          const text = `${place.placeName} ${place.keywords || ''}`.toLowerCase();
-          const connectors = [];
-          if (text.includes('ccs') || text.includes('dc fast')) connectors.push('CCS2');
-          if (text.includes('chademo')) connectors.push('CHAdeMO');
-          if (text.includes('type 2') || text.includes('ac')) connectors.push('Type 2 AC');
-          if (text.includes('bharat')) connectors.push('Bharat DC');
-          if (connectors.length === 0) connectors.push('CCS2', 'Type 2 AC');
-
-          let maxSpeed = '50 kW';
-          if (text.includes('fast') || text.includes('dc')) maxSpeed = '60 kW';
-          if (text.includes('supercharger') || text.includes('ultra')) maxSpeed = '150 kW';
-          if (text.includes('slow') || (text.includes('ac') && !text.includes('dc'))) maxSpeed = '7.2 kW';
-
-          let icon = '⚡';
-          if (text.includes('tata')) icon = '🔋';
-          else if (text.includes('ather')) icon = '🛵';
-          else if (text.includes('bpcl') || text.includes('iocl') || text.includes('hpcl')) icon = '⛽';
-          else if (text.includes('reliance') || text.includes('jio')) icon = '🏪';
-          else if (text.includes('mg') || text.includes('hyundai') || text.includes('mercedes')) icon = '🚗';
-          else if (text.includes('chargezone') || text.includes('statiq') || text.includes('fortum')) icon = '🔌';
-
-          const distKm = place.distance != null ? (place.distance / 1000).toFixed(1) + ' km' : '—';
-
-          return {
-            _id: place.eLoc || `google_${i}`,
-            icon,
-            name: place.placeName || 'EV Charging Station',
-            address: place.placeAddress || '',
-            distance: distKm,
-            portsOpen: '—',
-            maxSpeed,
-            price: '₹15/kWh',
-            connectors,
-            status: 'available',
-            lat: place.latitude,
-            lng: place.longitude,
-            mapPos: null,
-            _source: 'google'
-          };
-        });
-      }
-    } catch (err) {
-      console.error('Google nearby fetch failed:', err);
-    }
-
-    // 2. Fetch from Mappls Nearby
+    // 1. Fetch from Mappls Nearby
     try {
       const ep = `/mappls/nearby?lat=${lat}&lng=${lng}&radius=${radius}`;
       const r = await apiCall(ep);
@@ -272,8 +221,59 @@ export function AppProvider({ children }) {
       console.error('Mappls nearby fetch failed:', err);
     }
 
+    // 2. Fetch from OSM via backend
+    try {
+      const ep = `/map/nearby?lat=${lat}&lng=${lng}&radius=${radius}`;
+      const r = await apiCall(ep);
+      if (r.ok && r.data?.data) {
+        osmStations = r.data.data.map((place, i) => {
+          const text = `${place.placeName} ${place.keywords || ''}`.toLowerCase();
+          const connectors = [];
+          if (text.includes('ccs') || text.includes('dc fast')) connectors.push('CCS2');
+          if (text.includes('chademo')) connectors.push('CHAdeMO');
+          if (text.includes('type 2') || text.includes('ac')) connectors.push('Type 2 AC');
+          if (text.includes('bharat')) connectors.push('Bharat DC');
+          if (connectors.length === 0) connectors.push('CCS2', 'Type 2 AC');
+
+          let maxSpeed = '50 kW';
+          if (text.includes('fast') || text.includes('dc')) maxSpeed = '60 kW';
+          if (text.includes('supercharger') || text.includes('ultra')) maxSpeed = '150 kW';
+          if (text.includes('slow') || (text.includes('ac') && !text.includes('dc'))) maxSpeed = '7.2 kW';
+
+          let icon = '⚡';
+          if (text.includes('tata')) icon = '🔋';
+          else if (text.includes('ather')) icon = '🛵';
+          else if (text.includes('bpcl') || text.includes('iocl') || text.includes('hpcl')) icon = '⛽';
+          else if (text.includes('reliance') || text.includes('jio')) icon = '🏪';
+          else if (text.includes('mg') || text.includes('hyundai') || text.includes('mercedes')) icon = '🚗';
+          else if (text.includes('chargezone') || text.includes('statiq') || text.includes('fortum')) icon = '🔌';
+
+          const distKm = place.distance != null ? (place.distance / 1000).toFixed(1) + ' km' : '—';
+
+          return {
+            _id: place.eLoc || `osm_${i}`,
+            icon,
+            name: place.placeName || 'EV Charging Station',
+            address: place.placeAddress || '',
+            distance: distKm,
+            portsOpen: '—',
+            maxSpeed,
+            price: '₹15/kWh',
+            connectors,
+            status: 'available',
+            lat: place.latitude,
+            lng: place.longitude,
+            mapPos: null,
+            _source: 'osm'
+          };
+        });
+      }
+    } catch (err) {
+      console.error('OSM nearby fetch failed:', err);
+    }
+
     // 3. Merge and deduplicate stations by proximity (~50 meters)
-    const merged = [...googleStations];
+    const merged = [...mapplsStations];
 
     const getDistMeters = (lat1, lon1, lat2, lon2) => {
       const R = 6371e3;
@@ -286,24 +286,24 @@ export function AppProvider({ children }) {
       return R * c;
     };
 
-    for (const mStation of mapplsStations) {
-      const isDuplicate = googleStations.some(gStation => {
-        const dist = getDistMeters(gStation.lat, gStation.lng, mStation.lat, mStation.lng);
+    for (const oStation of osmStations) {
+      const isDuplicate = mapplsStations.some(mStation => {
+        const dist = getDistMeters(mStation.lat, mStation.lng, oStation.lat, oStation.lng);
         return dist < 50; // consider duplicate if within 50m
       });
       if (!isDuplicate) {
-        merged.push(mStation);
+        merged.push(oStation);
       }
     }
 
     return merged;
   }, []);
 
-  // ─── OpenStreetMap / Nominatim Search ───────────────────────────────────────
+  // ─── Nominatim Address Search ───────────────────────────────────────────────
   const searchAddressNominatim = useCallback(async (queryText) => {
     if (!queryText?.trim()) return [];
     try {
-      const r = await apiCall(`/google/search-address?query=${encodeURIComponent(queryText)}`, { timeout: 10000 });
+      const r = await apiCall(`/map/search-address?query=${encodeURIComponent(queryText)}`, { timeout: 10000 });
       if (!r.ok || !r.data?.data) return [];
       return r.data.data;
     } catch (err) {
@@ -433,10 +433,10 @@ export function AppProvider({ children }) {
     }
   }, []);
 
-  // ─── OpenStreetMap / OSRM Router ──────────────────────────────────────────
+  // ─── OSRM Router ──────────────────────────────────────────────────────────
   const fetchOSMRoute = useCallback(async (startLng, startLat, destLng, destLat, throwOnError = false) => {
     try {
-      const r = await apiCall('/google/route', {
+      const r = await apiCall('/map/route', {
         method: 'POST',
         timeout: 25000,
         body: {

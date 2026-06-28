@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useApp } from './context';
+import maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { useCountUp, useScrollReveal, useTiltCard } from './hooks';
 import { STATS, STATIONS, FILTER_TABS, CONNECTOR_TYPES, HOW_STEPS } from './data';
 import { MagneticButton, btnBase } from './Navbar';
@@ -166,37 +168,112 @@ const EV_PRESETS = [
   { name: 'Custom EV', batteryCapacity: 40.0, consumption: 150 }
 ];
 
-// ─── Google Maps Styles ────────────────────────────────────────────────────────
-const darkMapStyle = [
-  { elementType: "geometry", stylers: [{ color: "#0B0F19" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#0B0F19" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#8E9AA8" }] },
-  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#00FF88" }] },
-  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#8E9AA8" }] },
-  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#101622" }] },
-  { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#546578" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#151C2C" }] },
-  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#1E293B" }] },
-  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#64748B" }] },
-  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#1E293B" }] },
-  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#334155" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#0F172A" }] },
-  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#475569" }] }
-];
+// ─── MapLibre Tile URLs ────────────────────────────────────────────────────────
+const DARK_TILE_STYLE = {
+  version: 8,
+  sources: {
+    'carto-dark': {
+      type: 'raster',
+      tiles: ['https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png'],
+      tileSize: 256,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>'
+    }
+  },
+  layers: [{ id: 'carto-dark-layer', type: 'raster', source: 'carto-dark', minzoom: 0, maxzoom: 20 }]
+};
 
-const lightMapStyle = [
-  { elementType: "geometry", stylers: [{ color: "#f5f5f5" }] },
-  { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#f5f5f5" }] },
-  { featureType: "administrative.land_parcel", elementType: "labels.text.fill", stylers: [{ color: "#bdbdbd" }] },
-  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
-  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#e5e5e5" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
-  { featureType: "road.arterial", elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
-  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#dadada" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#c9c9c9" }] }
-];
+const LIGHT_TILE_STYLE = {
+  version: 8,
+  sources: {
+    'carto-light': {
+      type: 'raster',
+      tiles: ['https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png'],
+      tileSize: 256,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>'
+    }
+  },
+  layers: [{ id: 'carto-light-layer', type: 'raster', source: 'carto-light', minzoom: 0, maxzoom: 20 }]
+};
+
+// ─── Custom SVG Icon Helpers (return data URL strings) ──────────────────────
+const getUserLocSvg = () => `
+  <svg xmlns="http://www.w3.org/2000/svg" width="38" height="38" viewBox="0 0 38 38">
+    <circle cx="19" cy="19" r="16" fill="none" stroke="#3B82F6" stroke-width="1.5" opacity="0.15" />
+    <circle cx="19" cy="19" r="11" fill="none" stroke="#3B82F6" stroke-width="1.5" opacity="0.3" />
+    <circle cx="19" cy="19" r="18" fill="rgba(59,130,246,0.12)" />
+    <circle cx="19" cy="19" r="13" fill="rgba(59,130,246,0.22)" />
+    <circle cx="19" cy="20" r="7" fill="rgba(10,14,23,0.3)" />
+    <circle cx="19" cy="19" r="7" fill="url(#blueDotGrad)" stroke="#ffffff" stroke-width="2" />
+    <defs>
+      <radialGradient id="blueDotGrad" cx="35%" cy="35%" r="65%">
+        <stop offset="0%" stop-color="#60A5FA" />
+        <stop offset="70%" stop-color="#2563EB" />
+        <stop offset="100%" stop-color="#1D4ED8" />
+      </radialGradient>
+    </defs>
+  </svg>
+`;
+
+const getMarkerSvg = (status, isActive) => {
+  const color = status === 'available' ? '#10B981' : status === 'busy' ? '#F59E0B' : '#EF4444';
+  const bg = isActive ? '#ffffff' : '#151C2C';
+  const strokeColor = color;
+  const boltColor = isActive ? color : '#ffffff';
+  return `
+    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="42" viewBox="0 0 36 42">
+      <path d="M18,40 C18,40 34,29.5 34,18 C34,8.5 27.5,2 18,2 C8.5,2 2,8.5 2,18 C2,29.5 18,40 18,40 Z" fill="rgba(10,14,23,0.25)" transform="translate(0, 2)" />
+      <path d="M18,2 C27.5,2 34,8.5 34,18 C34,29.5 18,40 18,40 C18,40 2,29.5 2,18 C2,8.5 8.5,2 18,2 Z" fill="${bg}" stroke="${strokeColor}" stroke-width="2.5" />
+      ${isActive ? `<circle cx="18" cy="17" r="9" fill="${bg}" />` : ''}
+      <path d="M18,8 L12,19 H17 L15,30 L24,16 H19 Z" fill="${boltColor}" />
+    </svg>
+  `;
+};
+
+const getStartSvg = () => `
+  <svg xmlns="http://www.w3.org/2000/svg" width="36" height="42" viewBox="0 0 36 42">
+    <path d="M18,40 C18,40 34,29.5 34,18 C34,8.5 27.5,2 18,2 C8.5,2 2,8.5 2,18 C2,29.5 18,40 18,40 Z" fill="rgba(10,14,23,0.3)" transform="translate(0, 2)" />
+    <path d="M18,2 C27.5,2 34,8.5 34,18 C34,29.5 18,40 18,40 C18,40 2,29.5 2,18 C2,8.5 8.5,2 18,2 Z" fill="#10B981" stroke="#ffffff" stroke-width="2.5" />
+    <circle cx="18" cy="17" r="8" fill="#ffffff" />
+    <path d="M18,11 L22.5,21 L18,19.5 L13.5,21 Z" fill="#10B981" />
+  </svg>
+`;
+
+const getDestSvg = () => `
+  <svg xmlns="http://www.w3.org/2000/svg" width="36" height="42" viewBox="0 0 36 42">
+    <path d="M18,40 C18,40 34,29.5 34,18 C34,8.5 27.5,2 18,2 C8.5,2 2,8.5 2,18 C2,29.5 18,40 18,40 Z" fill="rgba(10,14,23,0.3)" transform="translate(0, 2)" />
+    <path d="M18,2 C27.5,2 34,8.5 34,18 C34,29.5 18,40 18,40 C18,40 2,29.5 2,18 C2,8.5 8.5,2 18,2 Z" fill="#EF4444" stroke="#ffffff" stroke-width="2.5" />
+    <circle cx="18" cy="17" r="8" fill="#ffffff" />
+    <line x1="14" y1="11" x2="14" y2="23" stroke="#334155" stroke-width="1.5" stroke-linecap="round" />
+    <rect x="14" y="11" width="3" height="3" fill="#000000" />
+    <rect x="17" y="11" width="3" height="3" fill="#ffffff" />
+    <rect x="20" y="11" width="3" height="3" fill="#000000" />
+    <rect x="14" y="14" width="3" height="3" fill="#ffffff" />
+    <rect x="17" y="14" width="3" height="3" fill="#000000" />
+    <rect x="20" y="14" width="3" height="3" fill="#ffffff" />
+    <rect x="14" y="11" width="9" height="6" fill="none" stroke="#334155" stroke-width="0.5" />
+  </svg>
+`;
+
+const getStopSvg = (index) => `
+  <svg xmlns="http://www.w3.org/2000/svg" width="40" height="46" viewBox="0 0 40 46">
+    <path d="M20,44 C20,44 37,32 37,19 C37,8.5 30,2 20,2 C10,2 3,8.5 3,19 C3,32 20,44 20,44 Z" fill="rgba(10,14,23,0.3)" transform="translate(0, 2)" />
+    <path d="M20,2 C30,2 37,9 37,19 C37,31 20,44 20,44 C20,44 3,31 3,19 C3,9 10,2 20,2 Z" fill="#3B82F6" stroke="#ffffff" stroke-width="2.5" />
+    <circle cx="20" cy="18" r="9" fill="#ffffff" />
+    <path d="M20,9 L14,19 H19 L17,27 L25,16 H20 Z" fill="#3B82F6" />
+    <circle cx="31" cy="9" r="8.5" fill="#EF4444" stroke="#ffffff" stroke-width="1.5" />
+    <text x="31" y="12" font-family="'Inter', -apple-system, sans-serif" font-size="9" font-weight="900" fill="#ffffff" text-anchor="middle">${index + 1}</text>
+  </svg>
+`;
+
+// Helper: create a DOM element from SVG string for MapLibre markers
+function svgToElement(svgString, width, height) {
+  const el = document.createElement('div');
+  el.innerHTML = svgString;
+  el.style.width = width + 'px';
+  el.style.height = height + 'px';
+  el.style.cursor = 'pointer';
+  return el;
+}
 
 // Haversine distance calculator
 function getDistanceMeters(lat1, lon1, lat2, lon2) {
@@ -228,138 +305,6 @@ function formatDuration(totalSeconds) {
   return parts.join(' ');
 }
 
-// ─── Custom Google Maps Blue Dot Geolocation Marker ──────────────────────────
-const getUserLocIcon = () => {
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="38" height="38" viewBox="0 0 38 38">
-      <!-- Radar Waves -->
-      <circle cx="19" cy="19" r="16" fill="none" stroke="#3B82F6" stroke-width="1.5" opacity="0.15" />
-      <circle cx="19" cy="19" r="11" fill="none" stroke="#3B82F6" stroke-width="1.5" opacity="0.3" />
-      
-      <!-- Outer Beacon Glow -->
-      <circle cx="19" cy="19" r="18" fill="rgba(59,130,246,0.12)" />
-      <circle cx="19" cy="19" r="13" fill="rgba(59,130,246,0.22)" />
-      
-      <!-- Blue Orb Drop Shadow -->
-      <circle cx="19" cy="20" r="7" fill="rgba(10,14,23,0.3)" />
-      
-      <!-- Core Navigation Beacon -->
-      <circle cx="19" cy="19" r="7" fill="url(#blueDotGrad)" stroke="#ffffff" stroke-width="2" />
-      
-      <defs>
-        <radialGradient id="blueDotGrad" cx="35%" cy="35%" r="65%">
-          <stop offset="0%" stop-color="#60A5FA" />
-          <stop offset="70%" stop-color="#2563EB" />
-          <stop offset="100%" stop-color="#1D4ED8" />
-        </radialGradient>
-      </defs>
-    </svg>
-  `;
-  return {
-    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-    size: new window.google.maps.Size(38, 38),
-    anchor: new window.google.maps.Point(19, 19)
-  };
-};
-
-// ─── Custom Markers SVG Icons ──────────────────────────────────────────────────
-const getMarkerIcon = (status, isActive) => {
-  const color = status === 'available' ? '#10B981' : status === 'busy' ? '#F59E0B' : '#EF4444';
-  const bg = isActive ? '#ffffff' : '#151C2C';
-  const strokeColor = color;
-  const boltColor = isActive ? color : '#ffffff';
-  
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="42" viewBox="0 0 36 42">
-      <!-- Pin Drop Shadow -->
-      <path d="M18,40 C18,40 34,29.5 34,18 C34,8.5 27.5,2 18,2 C8.5,2 2,8.5 2,18 C2,29.5 18,40 18,40 Z" fill="rgba(10,14,23,0.25)" transform="translate(0, 2)" />
-      <!-- Pin Body -->
-      <path d="M18,2 C27.5,2 34,8.5 34,18 C34,29.5 18,40 18,40 C18,40 2,29.5 2,18 C2,8.5 8.5,2 18,2 Z" fill="${bg}" stroke="${strokeColor}" stroke-width="2.5" />
-      <!-- White Ring around bolt (only on active pins) -->
-      ${isActive ? `<circle cx="18" cy="17" r="9" fill="${bg}" />` : ''}
-      <!-- Lightning Bolt Path (Sharp & Clean) -->
-      <path d="M18,8 L12,19 H17 L15,30 L24,16 H19 Z" fill="${boltColor}" />
-    </svg>
-  `;
-  return {
-    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-    size: new window.google.maps.Size(36, 42),
-    anchor: new window.google.maps.Point(18, 40)
-  };
-};
-
-const getStartIcon = () => {
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="42" viewBox="0 0 36 42">
-      <!-- Pin Drop Shadow -->
-      <path d="M18,40 C18,40 34,29.5 34,18 C34,8.5 27.5,2 18,2 C8.5,2 2,8.5 2,18 C2,29.5 18,40 18,40 Z" fill="rgba(10,14,23,0.3)" transform="translate(0, 2)" />
-      <!-- Pin Body (Green) -->
-      <path d="M18,2 C27.5,2 34,8.5 34,18 C34,29.5 18,40 18,40 C18,40 2,29.5 2,18 C2,8.5 8.5,2 18,2 Z" fill="#10B981" stroke="#ffffff" stroke-width="2.5" />
-      <!-- Inner White Plate -->
-      <circle cx="18" cy="17" r="8" fill="#ffffff" />
-      <!-- Green Navigation Arrow -->
-      <path d="M18,11 L22.5,21 L18,19.5 L13.5,21 Z" fill="#10B981" />
-    </svg>
-  `;
-  return {
-    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-    size: new window.google.maps.Size(36, 42),
-    anchor: new window.google.maps.Point(18, 40)
-  };
-};
-
-const getDestIcon = () => {
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="42" viewBox="0 0 36 42">
-      <!-- Pin Drop Shadow -->
-      <path d="M18,40 C18,40 34,29.5 34,18 C34,8.5 27.5,2 18,2 C8.5,2 2,8.5 2,18 C2,29.5 18,40 18,40 Z" fill="rgba(10,14,23,0.3)" transform="translate(0, 2)" />
-      <!-- Pin Body (Red) -->
-      <path d="M18,2 C27.5,2 34,8.5 34,18 C34,29.5 18,40 18,40 C18,40 2,29.5 2,18 C2,8.5 8.5,2 18,2 Z" fill="#EF4444" stroke="#ffffff" stroke-width="2.5" />
-      <!-- Inner White Plate -->
-      <circle cx="18" cy="17" r="8" fill="#ffffff" />
-      <!-- Checkered Flag Icon -->
-      <!-- Flagpole -->
-      <line x1="14" y1="11" x2="14" y2="23" stroke="#334155" stroke-width="1.5" stroke-linecap="round" />
-      <!-- Flag Cloth -->
-      <rect x="14" y="11" width="3" height="3" fill="#000000" />
-      <rect x="17" y="11" width="3" height="3" fill="#ffffff" />
-      <rect x="20" y="11" width="3" height="3" fill="#000000" />
-      <rect x="14" y="14" width="3" height="3" fill="#ffffff" />
-      <rect x="17" y="14" width="3" height="3" fill="#000000" />
-      <rect x="20" y="14" width="3" height="3" fill="#ffffff" />
-      <!-- Border around flag cloth -->
-      <rect x="14" y="11" width="9" height="6" fill="none" stroke="#334155" stroke-width="0.5" />
-    </svg>
-  `;
-  return {
-    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-    size: new window.google.maps.Size(36, 42),
-    anchor: new window.google.maps.Point(18, 40)
-  };
-};
-
-const getStopIcon = (index) => {
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="46" viewBox="0 0 40 46">
-      <!-- Pin Drop Shadow -->
-      <path d="M20,44 C20,44 37,32 37,19 C37,8.5 30,2 20,2 C10,2 3,8.5 3,19 C3,32 20,44 20,44 Z" fill="rgba(10,14,23,0.3)" transform="translate(0, 2)" />
-      <!-- Pin Body (Blue) -->
-      <path d="M20,2 C30,2 37,9 37,19 C37,31 20,44 20,44 C20,44 3,31 3,19 C3,9 10,2 20,2 Z" fill="#3B82F6" stroke="#ffffff" stroke-width="2.5" />
-      <!-- Inner White Plate -->
-      <circle cx="20" cy="18" r="9" fill="#ffffff" />
-      <!-- Blue Lightning Bolt -->
-      <path d="M20,9 L14,19 H19 L17,27 L25,16 H20 Z" fill="#3B82F6" />
-      <!-- Stop Number Badge (Red) -->
-      <circle cx="31" cy="9" r="8.5" fill="#EF4444" stroke="#ffffff" stroke-width="1.5" />
-      <text x="31" y="12" font-family="'Inter', -apple-system, sans-serif" font-size="9" font-weight="900" fill="#ffffff" text-anchor="middle">${index + 1}</text>
-    </svg>
-  `;
-  return {
-    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-    size: new window.google.maps.Size(40, 46),
-    anchor: new window.google.maps.Point(20, 44)
-  };
-};
 
 export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
   const { 
@@ -469,9 +414,9 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
   const markersGroupRef = useRef([]);
   const routeMarkersRef = useRef([]);
   const userLocMarkerRef = useRef(null);
-  const routePolylineRef = useRef(null);
+
   const fetchTimeoutRef = useRef(null);
-  const clustererRef = useRef(null);
+
 
   const handleBook = () => {
     if (!user) { setAuthModal('login'); return; }
@@ -507,14 +452,9 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
     }
   }, [fetchOSMChargingStations]);
 
+  // MapLibre is always ready (no external script to wait for)
   useEffect(() => {
-    const checkGoogle = setInterval(() => {
-      if (window.google && window.google.maps) {
-        setMapLoaded(true);
-        clearInterval(checkGoogle);
-      }
-    }, 100);
-    return () => clearInterval(checkGoogle);
+    setMapLoaded(true);
   }, []);
 
   const locateUser = (zoomIn = true) => {
@@ -531,21 +471,17 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
         loadOSMStations(latitude, longitude, 10000);
 
         if (mapInstanceRef.current) {
-          const latLng = new window.google.maps.LatLng(latitude, longitude);
           if (zoomIn) {
-            mapInstanceRef.current.setZoom(14);
-            mapInstanceRef.current.panTo(latLng);
+            mapInstanceRef.current.flyTo({ center: [longitude, latitude], zoom: 14 });
           }
 
           if (userLocMarkerRef.current) {
-            userLocMarkerRef.current.setPosition(latLng);
+            userLocMarkerRef.current.setLngLat([longitude, latitude]);
           } else {
-            userLocMarkerRef.current = new window.google.maps.Marker({
-              position: latLng,
-              map: mapInstanceRef.current,
-              icon: getUserLocIcon(),
-              title: 'Your Location'
-            });
+            const el = svgToElement(getUserLocSvg(), 38, 38);
+            userLocMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'center' })
+              .setLngLat([longitude, latitude])
+              .addTo(mapInstanceRef.current);
           }
 
           if (zoomIn) {
@@ -608,67 +544,43 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
   const renderMarkers = useCallback(() => {
     if (!mapInstanceRef.current || !mapLoaded) return;
 
-    // Clear existing station markers and clusterer
+    // Clear existing station markers
     if (markersGroupRef.current && markersGroupRef.current.length > 0) {
-      markersGroupRef.current.forEach(m => m.setMap(null));
+      markersGroupRef.current.forEach(m => m.remove());
     }
     markersGroupRef.current = [];
 
-    if (clustererRef.current) {
-      clustererRef.current.clearMarkers();
-      clustererRef.current = null;
-    }
-
     // Clear existing route markers
     if (routeMarkersRef.current && routeMarkersRef.current.length > 0) {
-      routeMarkersRef.current.forEach(m => m.setMap(null));
+      routeMarkersRef.current.forEach(m => m.remove());
     }
     routeMarkersRef.current = [];
 
     // 1. Render Route start, destination, and charging stops (if active)
     if (sidebarTab === 'route' && routeData) {
       // Start Marker
-      const startMarker = new window.google.maps.Marker({
-        position: { lat: routeData.start.lat, lng: routeData.start.lng },
-        map: mapInstanceRef.current,
-        icon: getStartIcon(),
-        title: 'Start Position',
-        zIndex: 9999
-      });
-      const startInfoWindow = new window.google.maps.InfoWindow({
-        content: `<div style="color: #0F172A;"><strong>Start Position</strong><br/>${routeData.start.name}</div>`
-      });
-      startMarker.addListener('click', () => {
-        startInfoWindow.open(mapInstanceRef.current, startMarker);
-      });
+      const startEl = svgToElement(getStartSvg(), 36, 42);
+      const startPopup = new maplibregl.Popup({ offset: [0, -42], closeButton: false })
+        .setHTML(`<div style="color: #0F172A;"><strong>Start Position</strong><br/>${routeData.start.name}</div>`);
+      const startMarker = new maplibregl.Marker({ element: startEl, anchor: 'bottom' })
+        .setLngLat([routeData.start.lng, routeData.start.lat])
+        .setPopup(startPopup)
+        .addTo(mapInstanceRef.current);
       routeMarkersRef.current.push(startMarker);
 
       // Destination Marker
-      const destMarker = new window.google.maps.Marker({
-        position: { lat: routeData.destination.lat, lng: routeData.destination.lng },
-        map: mapInstanceRef.current,
-        icon: getDestIcon(),
-        title: 'Destination',
-        zIndex: 9999
-      });
-      const destInfoWindow = new window.google.maps.InfoWindow({
-        content: `<div style="color: #0F172A;"><strong>Destination</strong><br/>${routeData.destination.name}</div>`
-      });
-      destMarker.addListener('click', () => {
-        destInfoWindow.open(mapInstanceRef.current, destMarker);
-      });
+      const destEl = svgToElement(getDestSvg(), 36, 42);
+      const destPopup = new maplibregl.Popup({ offset: [0, -42], closeButton: false })
+        .setHTML(`<div style="color: #0F172A;"><strong>Destination</strong><br/>${routeData.destination.name}</div>`);
+      const destMarker = new maplibregl.Marker({ element: destEl, anchor: 'bottom' })
+        .setLngLat([routeData.destination.lng, routeData.destination.lat])
+        .setPopup(destPopup)
+        .addTo(mapInstanceRef.current);
       routeMarkersRef.current.push(destMarker);
 
       // Stops Markers
       routeData.stops.forEach((stop, index) => {
-        const stopMarker = new window.google.maps.Marker({
-          position: { lat: stop.lat, lng: stop.lng },
-          map: mapInstanceRef.current,
-          icon: getStopIcon(index),
-          title: `Stop #${index + 1}: ${stop.name}`,
-          zIndex: 9999
-        });
-
+        const stopEl = svgToElement(getStopSvg(index), 40, 46);
         const popupContent = `
           <div style="font-family: 'Inter', sans-serif; padding: 4px; min-width: 170px; color: #0F172A;">
             <strong style="color: #3B82F6; font-size: 0.82rem;">⚡ Stop #${index + 1}: ${stop.name}</strong>
@@ -688,16 +600,13 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
             </div>
           </div>
         `;
-
-        const infoWindow = new window.google.maps.InfoWindow({
-          content: popupContent
-        });
-
-        stopMarker.addListener('click', () => {
-          infoWindow.open(mapInstanceRef.current, stopMarker);
-          setActivePin(stop);
-        });
-
+        const stopPopup = new maplibregl.Popup({ offset: [0, -46], closeButton: false })
+          .setHTML(popupContent);
+        const stopMarker = new maplibregl.Marker({ element: stopEl, anchor: 'bottom' })
+          .setLngLat([stop.lng, stop.lat])
+          .setPopup(stopPopup)
+          .addTo(mapInstanceRef.current);
+        stopEl.addEventListener('click', () => setActivePin(stop));
         routeMarkersRef.current.push(stopMarker);
       });
     }
@@ -711,13 +620,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
 
     filtered.forEach(s => {
       const active = activePin && activePin._id === s._id;
-      const marker = new window.google.maps.Marker({
-        position: { lat: s.lat, lng: s.lng },
-        map: mapInstanceRef.current,
-        icon: getMarkerIcon(s.status, active),
-        title: s.name,
-        zIndex: 500
-      });
+      const el = svgToElement(getMarkerSvg(s.status, active), 36, 42);
 
       const popupContent = `
         <div style="font-family: 'Inter', sans-serif; padding: 4px; min-width: 180px; color: #0F172A;">
@@ -738,54 +641,45 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
         </div>
       `;
 
-      const infoWindow = new window.google.maps.InfoWindow({
-        content: popupContent
-      });
+      const popup = new maplibregl.Popup({ offset: [0, -42], closeButton: false })
+        .setHTML(popupContent);
 
-      marker.addListener('click', () => {
-        infoWindow.open(mapInstanceRef.current, marker);
+      const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+        .setLngLat([s.lng, s.lat])
+        .setPopup(popup)
+        .addTo(mapInstanceRef.current);
+
+      el.addEventListener('click', () => {
         setActivePin(s);
-        mapInstanceRef.current.panTo({ lat: s.lat, lng: s.lng });
+        mapInstanceRef.current.panTo([s.lng, s.lat]);
       });
 
       markersGroupRef.current.push(marker);
     });
-
-    // Cluster the background station markers
-    if (window.markerClusterer && markersGroupRef.current.length > 0) {
-      clustererRef.current = new window.markerClusterer.MarkerClusterer({
-        map: mapInstanceRef.current,
-        markers: markersGroupRef.current
-      });
-    }
   }, [filter, activePin, finalCandidates, sidebarTab, routeData, mapLoaded]);
 
   // Map Initialization Effect
   useEffect(() => {
     if (!mapLoaded || !mapRef.current || mapInstanceRef.current) return;
 
-    const map = new window.google.maps.Map(mapRef.current, {
-      center: { lat: 19.0596, lng: 72.8656 },
+    const map = new maplibregl.Map({
+      container: mapRef.current,
+      style: theme === 'light' ? LIGHT_TILE_STYLE : DARK_TILE_STYLE,
+      center: [72.8656, 19.0596],
       zoom: 11.5,
-      zoomControl: true,
-      zoomControlOptions: {
-        position: window.google.maps.ControlPosition.LEFT_TOP
-      },
-      mapTypeControl: false,
-      scaleControl: false,
-      streetViewControl: false,
-      rotateControl: false,
-      fullscreenControl: false,
-      styles: theme === 'light' ? lightMapStyle : darkMapStyle
+      attributionControl: true
     });
+
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
 
     mapInstanceRef.current = map;
 
-    renderMarkers();
-
-    loadMapplsStations(19.0596, 72.8656, 10000);
-    loadOSMStations(19.0596, 72.8656, 10000);
-    locateUser(false);
+    map.on('load', () => {
+      renderMarkers();
+      loadMapplsStations(19.0596, 72.8656, 10000);
+      loadOSMStations(19.0596, 72.8656, 10000);
+      locateUser(false);
+    });
 
     const onMoveEnd = () => {
       if (sidebarTab === 'route' && routeData) return;
@@ -795,26 +689,23 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
         const bounds = map.getBounds();
         if (!bounds) return;
         const ne = bounds.getNorthEast();
-        const diagMeters = getDistanceMeters(center.lat(), center.lng(), ne.lat(), ne.lng());
+        const diagMeters = getDistanceMeters(center.lat, center.lng, ne.lat, ne.lng);
         const radius = Math.min(Math.max(diagMeters, 2000), 12000);
-        loadMapplsStations(center.lat(), center.lng(), Math.round(radius));
-        loadOSMStations(center.lat(), center.lng(), Math.round(radius));
+        loadMapplsStations(center.lat, center.lng, Math.round(radius));
+        loadOSMStations(center.lat, center.lng, Math.round(radius));
       }, 300);
     };
 
-    const idleListener = map.addListener('idle', onMoveEnd);
+    map.on('moveend', onMoveEnd);
 
     return () => {
-      window.google.maps.event.removeListener(idleListener);
+      map.off('moveend', onMoveEnd);
       clearTimeout(fetchTimeoutRef.current);
       if (userLocMarkerRef.current) {
-        userLocMarkerRef.current.setMap(null);
+        userLocMarkerRef.current.remove();
         userLocMarkerRef.current = null;
       }
-      if (clustererRef.current) {
-        clustererRef.current.clearMarkers();
-        clustererRef.current = null;
-      }
+      map.remove();
       mapInstanceRef.current = null;
     };
   }, [mapLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -822,30 +713,47 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
   // Route Polyline Draw Effect
   useEffect(() => {
     if (!mapInstanceRef.current) return;
+    const map = mapInstanceRef.current;
 
-    if (routePolylineRef.current) {
-      routePolylineRef.current.setMap(null);
-      routePolylineRef.current = null;
-    }
+    // Remove existing route layer and source
+    if (map.getLayer('route-line')) map.removeLayer('route-line');
+    if (map.getSource('route-source')) map.removeSource('route-source');
 
     if (sidebarTab === 'route' && routeData && routeData.routeGeometry) {
-      const googleCoords = routeData.routeGeometry.coordinates.map(([lng, lat]) => ({
-        lat: lat,
-        lng: lng
-      }));
+      // Wait for map style to load if needed
+      const addRoute = () => {
+        if (map.getSource('route-source')) return; // already added
+        map.addSource('route-source', {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            geometry: routeData.routeGeometry
+          }
+        });
+        map.addLayer({
+          id: 'route-line',
+          type: 'line',
+          source: 'route-source',
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: {
+            'line-color': theme === 'light' ? '#10B981' : '#00FF88',
+            'line-width': 6,
+            'line-opacity': 0.85
+          }
+        });
 
-      routePolylineRef.current = new window.google.maps.Polyline({
-        path: googleCoords,
-        geodesic: true,
-        strokeColor: theme === 'light' ? '#10B981' : '#00FF88',
-        strokeOpacity: 0.85,
-        strokeWeight: 6.5,
-        map: mapInstanceRef.current
-      });
+        // Fit bounds
+        const coords = routeData.routeGeometry.coordinates;
+        const lngLats = coords.map(([lng, lat]) => [lng, lat]);
+        const bounds = lngLats.reduce((b, coord) => b.extend(coord), new maplibregl.LngLatBounds(lngLats[0], lngLats[0]));
+        map.fitBounds(bounds, { padding: 50 });
+      };
 
-      const bounds = new window.google.maps.LatLngBounds();
-      googleCoords.forEach(c => bounds.extend(c));
-      mapInstanceRef.current.fitBounds(bounds, { top: 50, bottom: 50, left: 50, right: 50 });
+      if (map.isStyleLoaded()) {
+        addRoute();
+      } else {
+        map.once('styledata', addRoute);
+      }
     }
   }, [routeData, sidebarTab, theme]);
 
@@ -855,13 +763,21 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
     }
   }, [filter, activePin, finalCandidates, sidebarTab, routeData, renderMarkers]);
 
+  // Theme switching effect
   useEffect(() => {
     if (mapInstanceRef.current) {
-      mapInstanceRef.current.setOptions({
-        styles: theme === 'light' ? lightMapStyle : darkMapStyle
+      const map = mapInstanceRef.current;
+      const center = map.getCenter();
+      const zoom = map.getZoom();
+      map.setStyle(theme === 'light' ? LIGHT_TILE_STYLE : DARK_TILE_STYLE);
+      // Re-render markers and re-add route after style change
+      map.once('styledata', () => {
+        map.setCenter(center);
+        map.setZoom(zoom);
+        renderMarkers();
       });
     }
-  }, [theme]);
+  }, [theme, renderMarkers]);
 
   const handleSearchLocation = async (queryText) => {
     if (!queryText.trim()) return;
@@ -875,9 +791,8 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
         const targetLng = parseFloat(lon);
 
         if (mapInstanceRef.current) {
-        mapInstanceRef.current.setZoom(12.5);
-        mapInstanceRef.current.panTo({ lat: targetLat, lng: targetLng });
-      }
+          mapInstanceRef.current.flyTo({ center: [targetLng, targetLat], zoom: 12.5 });
+        }
 
         await loadMapplsStations(targetLat, targetLng, 10000);
         await loadOSMStations(targetLat, targetLng, 10000);
@@ -901,12 +816,11 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
   const handleRefreshStations = () => {
     if (!mapInstanceRef.current) return;
     const center = mapInstanceRef.current.getCenter();
-    const lat = center.lat();
-    const lng = center.lng();
-    loadMapplsStations(lat, lng, 10000);
-    loadOSMStations(lat, lng, 10000);
+    loadMapplsStations(center.lat, center.lng, 10000);
+    loadOSMStations(center.lat, center.lng, 10000);
     showToast('Refreshing nearby chargers...', 'info');
   };
+
 
   const handlePlanRoute = async () => {
     if (!startPlace || !destPlace) {
@@ -951,8 +865,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
     setDestInput('');
     setRoutingError('');
     if (mapInstanceRef.current && userLoc) {
-      mapInstanceRef.current.setZoom(11.5);
-      mapInstanceRef.current.panTo({ lat: userLoc.lat, lng: userLoc.lng });
+      mapInstanceRef.current.flyTo({ center: [userLoc.lng, userLoc.lat], zoom: 11.5 });
     }
   };
 
