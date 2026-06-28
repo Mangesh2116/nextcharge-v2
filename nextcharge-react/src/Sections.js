@@ -506,9 +506,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
     setMapplsLoading(true);
     try {
       const stations = await fetchNearbyStations(lat, lng, radius);
-      if (stations && stations.length > 0) {
-        setMapplsStations(stations);
-      }
+      setMapplsStations(stations || []);
     } catch (e) {
       console.warn('Mappls fetch failed');
     } finally {
@@ -520,9 +518,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
     setOsmLoading(true);
     try {
       const stations = await fetchOSMChargingStations({ lat, lng, radius });
-      if (stations && stations.length > 0) {
-        setOsmStations(stations);
-      }
+      setOsmStations(stations || []);
     } catch (e) {
       console.warn('OSM Overpass fetch failed');
     } finally {
@@ -768,7 +764,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
         if (!bounds) return;
         const ne = bounds.getNorthEast();
         const diagMeters = getDistanceMeters(center.lat, center.lng, ne.lat, ne.lng);
-        const radius = Math.min(Math.max(diagMeters, 2000), 12000);
+        const radius = Math.min(Math.max(diagMeters, 2000), 50000);
         loadMapplsStations(center.lat, center.lng, Math.round(radius));
         loadOSMStations(center.lat, center.lng, Math.round(radius));
       }, 300);
