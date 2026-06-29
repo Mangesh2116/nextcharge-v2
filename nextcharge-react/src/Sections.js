@@ -508,7 +508,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
     setMapLoaded(true);
   }, []);
 
-  const locateUser = (zoomIn = true) => {
+  const locateUser = useCallback((zoomIn = true) => {
     if (!navigator.geolocation) {
       showToast('Geolocation is not supported by your browser', 'error');
       return;
@@ -554,7 +554,7 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
       },
       { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 }
     );
-  };
+  }, [showToast, setUserLoc]);
 
   const handleUseCurrentLocation = () => {
     if (userLoc) {
@@ -803,13 +803,27 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
     });
   }, [filter, activePin, finalCandidates, sidebarTab, routeData, mapLoaded, setSelectedStation]);
 
+  const renderMarkersRef = useRef(renderMarkers);
+  renderMarkersRef.current = renderMarkers;
+
+  const locateUserRef = useRef(locateUser);
+  locateUserRef.current = locateUser;
+
+  const sidebarTabRef = useRef(sidebarTab);
+  sidebarTabRef.current = sidebarTab;
+
+  const routeDataRef = useRef(routeData);
+  routeDataRef.current = routeData;
+
+  const initialThemeRef = useRef(theme);
+
   // Map Initialization Effect
   useEffect(() => {
     if (!mapLoaded || !mapRef.current || mapInstanceRef.current) return;
 
     const map = new maplibregl.Map({
       container: mapRef.current,
-      style: theme === 'light' ? LIGHT_TILE_STYLE : DARK_TILE_STYLE,
+      style: initialThemeRef.current === 'light' ? LIGHT_TILE_STYLE : DARK_TILE_STYLE,
       center: [72.8656, 19.0596],
       zoom: 11.5,
       attributionControl: true
@@ -820,16 +834,16 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
     mapInstanceRef.current = map;
 
     map.on('load', () => {
-      renderMarkers();
+      if (renderMarkersRef.current) renderMarkersRef.current();
       const bounds = map.getBounds();
       if (bounds) {
         loadStationsForBounds(bounds, map.getZoom());
       }
-      locateUser(false);
+      if (locateUserRef.current) locateUserRef.current(false);
     });
 
     const onMoveEnd = () => {
-      if (sidebarTab === 'route' && routeData) return;
+      if (sidebarTabRef.current === 'route' && routeDataRef.current) return;
       clearTimeout(fetchTimeoutRef.current);
       fetchTimeoutRef.current = setTimeout(() => {
         const bounds = map.getBounds();
@@ -855,6 +869,13 @@ export function MapSection({ onSearch, apiStations = [], onStationsChange }) {
       mapInstanceRef.current = null;
     };
   }, [mapLoaded, loadStationsForBounds]);
+
+  // Handle Map Theme Changes Dynamically
+  useEffect(() => {
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.setStyle(theme === 'light' ? LIGHT_TILE_STYLE : DARK_TILE_STYLE);
+    }
+  }, [theme]);
 
   // Route Polyline Draw Effect
   useEffect(() => {
